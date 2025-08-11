@@ -3,7 +3,7 @@ self.addEventListener('install', event => {
         caches.open('bright-system-cache').then(cache => {
             return cache.addAll([
                 './',
-                './index.html',
+                './bright_system_singlefile.html',
                 './manifest.json'
             ]);
         })
