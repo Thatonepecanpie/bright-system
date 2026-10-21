@@ -1,9 +1,10 @@
 // Fernando's dashboard. Plain JS, no build step. Talks only to /api/owner/*.
 'use strict';
 
+// Board column order: what needs Fernando first, then the flow of work.
 const STATUSES = [
-  ['backlog', 'Backlog'], ['ready', 'Ready'], ['in_progress', 'In Progress'], ['blocked', 'Blocked'],
-  ['needs_fernando', 'Needs Fernando'], ['review', 'Review'], ['done', 'Done'],
+  ['needs_fernando', 'Needs Fernando'], ['ready', 'Ready'], ['in_progress', 'In Progress'], ['review', 'Review'],
+  ['blocked', 'Blocked'], ['backlog', 'Backlog'], ['done', 'Done'],
 ];
 const STATUS_LABEL = Object.fromEntries(STATUSES);
 const GATES = ['', 'purchase', 'job_offer', 'credentials', 'other'];
@@ -11,6 +12,7 @@ const MEMORY_KINDS = ['decision', 'rule', 'worked', 'failed', 'fact'];
 const MESSAGE_KINDS = ['update', 'question', 'answer', 'feedback', 'blocker', 'achievement'];
 
 const state = { snap: null, view: 'board', project: '', showSuperseded: false };
+const API = window.BOARD_API || '/api';
 const $ = (sel, root = document) => root.querySelector(sel);
 
 // ---------- helpers ----------
@@ -71,7 +73,7 @@ function formData(form) {
 }
 
 async function api(action, args = {}) {
-  const r = await fetch(`/api/owner/${action}`, {
+  const r = await fetch(`${API}/owner/${action}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}`, 'X-Board-Client': 'dashboard' },
     body: JSON.stringify(args),
@@ -280,7 +282,7 @@ function viewSettings() {
     <div class="panel"><h2>Access</h2>
       <p class="small muted">Your owner token is stored only in this browser. Rotating it signs out every other device.</p>
       <div class="actions"><button class="btn" id="rotate-owner">Rotate my owner token</button><button class="btn danger" id="sign-out">Sign out on this device</button></div>
-      <p class="small muted">Agent page: <a href="/agent">/agent</a> · API guide for agents: <a href="/api">/api</a></p></div>`;
+      <p class="small muted">Agent page: <a href="/agent">/agent</a> · API guide for agents: <a href="https://qwnkqpaloygtgvvwtalu.supabase.co/functions/v1/board">board API guide</a></p></div>`;
 }
 
 const VIEWS = { board: viewBoard, projects: viewProjects, team: viewTeam, agents: viewAgents, memory: viewMemory, messages: viewMessages, activity: viewActivity, settings: viewSettings };
@@ -305,7 +307,9 @@ function taskForm(t = {}) {
   return `<form>
     <div class="dialog-error error hidden"></div>
     ${isNew ? '' : `<p class="small muted">${esc(t.ref)} · created by ${esc(t.created_by)} ${ago(t.created_at)} · status ${esc(STATUS_LABEL[t.status])}${t.owner ? ' · owner ' + esc(t.owner) : ''}${t.lease_expires_at ? ' · lease ' + until(t.lease_expires_at) : ''}</p>`}
-    ${t.status === 'needs_fernando' ? `<div class="notice"><strong>Waiting on you.</strong> ${t.human_gate ? 'Human gate: ' + esc(t.human_gate) + '. ' : ''}Read the handoff note, then approve or send it back.</div>` : ''}
+    ${t.status === 'needs_fernando' ? `<div class="notice"><strong>Waiting on you.</strong> ${t.human_gate ? 'Human gate: ' + esc(t.human_gate) + '. ' : ''}Read the handoff note, then approve or send it back.
+      ${t.handoff_note ? `<pre style="margin-top:.5rem">${esc(t.handoff_note)}</pre>` : ''}${t.evidence ? `<div class="small" style="margin-top:.35rem">Evidence: ${esc(t.evidence)}</div>` : ''}
+      <div class="actions"><button class="btn primary" value="approve">Approve → Done</button><button class="btn" value="sendback">Send back → Ready</button></div></div>` : ''}
     <label>Title</label><input name="title" required maxlength="200" value="${esc(t.title || '')}">
     <div class="row">
       <div><label>Project</label><select name="project" ${isNew ? '' : 'disabled'}>${options(projects.map((p) => [p.slug, p.name]), t.project || state.project || (projects[0] || {}).slug)}</select></div>
@@ -325,7 +329,6 @@ function taskForm(t = {}) {
     <label>Note to post with this change (optional)</label><input name="note" placeholder="Becomes a message on the task">
     <div class="actions">
       <button class="btn primary" value="save">${isNew ? 'Create task' : 'Save'}</button>
-      ${t.status === 'needs_fernando' ? '<button class="btn" value="approve">Approve → Done</button><button class="btn" value="sendback">Send back → Ready</button>' : ''}
     </div>
     ${isNew ? '' : `<h3 style="margin-top:1.2rem">Messages</h3>${(t.messages || []).map((m) => `<div class="list-item small"><strong>${esc(m.author)}</strong> → ${esc(m.to_agent || 'everyone')} · ${stamp(m.created_at)}<br>${esc(m.body)}</div>`).join('') || '<div class="empty small">None.</div>'}
     <h3 style="margin-top:1rem">History</h3>${(t.events || []).map((e) => `<div class="small">${stamp(e.at)} · <strong>${esc(e.actor)}</strong> ${esc(e.action.replace(/_/g, ' '))}${e.detail && e.detail.to ? ' → ' + esc(e.detail.to) : ''}</div>`).join('')}`}

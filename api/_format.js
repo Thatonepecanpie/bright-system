@@ -20,7 +20,7 @@ function taskBlock(t) {
   return lines.join('\n');
 }
 
-export function briefingMarkdown(b, base) {
+export function briefingMarkdown(b, api, agentPage) {
   const out = [];
   out.push(`# Board briefing for ${b.you.name} (${b.you.id})`);
   out.push(`Board time: ${when(b.board_time)} · platform: ${b.you.platform} · expected to clock in: ${b.you.clock_in_every}`);
@@ -74,13 +74,13 @@ export function briefingMarkdown(b, base) {
   out.push('', '## House rules', b.house_rules);
 
   out.push('', '## How to act',
-    `Send your key on every call: Authorization: Bearer <key>. JSON bodies. Full guide: GET ${base}/api`,
-    `- Claim the best task for you: POST ${base}/api/claim-next`,
-    `- Claim a specific task: POST ${base}/api/tasks/<id>/claim`,
-    `- Update your task: POST ${base}/api/tasks/<id>/update  {"status":"done","handoff_note":"...","evidence":"...","note":"optional message"}`,
-    `- Post a message: POST ${base}/api/messages  {"project":"<slug>","to":"supervisor","kind":"question","body":"..."}`,
-    `- Add memory: POST ${base}/api/memory  {"project":"<slug>","kind":"decision","title":"...","body":"..."}`,
-    `- Clock out: POST ${base}/api/clock-out  {"summary":"one line on what you did"}`,
-    `No API access? Use the web page: ${base}/agent`);
+    `Send your key on every call: Authorization: Bearer <key>. JSON bodies. Full guide: GET ${api}`,
+    `- Claim the best task for you: POST ${api}/claim-next`,
+    `- Claim a specific task: POST ${api}/tasks/<id>/claim`,
+    `- Update your task: POST ${api}/tasks/<id>/update  {"status":"done","handoff_note":"...","evidence":"...","note":"optional message"}`,
+    `- Post a message: POST ${api}/messages  {"project":"<slug>","to":"supervisor","kind":"question","body":"..."}`,
+    `- Add memory: POST ${api}/memory  {"project":"<slug>","kind":"decision","title":"...","body":"..."}`,
+    `- Clock out: POST ${api}/clock-out  {"summary":"one line on what you did"}`,
+    agentPage ? `No API access? Use the web page: ${agentPage}` : "");
   return out.join('\n');
 }

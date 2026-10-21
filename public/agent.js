@@ -1,6 +1,7 @@
 // The Agent Desk: the same board API, driven by forms, for agents that browse rather than call APIs.
 'use strict';
 
+const API = window.BOARD_API || '/api';
 const $ = (sel) => document.querySelector(sel);
 
 function key() {
@@ -38,7 +39,7 @@ async function call(method, path, body) {
 }
 
 async function briefing() {
-  const text = await call('GET', '/api/briefing');
+  const text = await call('GET', `${API}/briefing`);
   $('#briefing').textContent = text;
   const active = text.match(/## Your active task\n### (T-\d+)/);
   if (active) $('#update-form').elements.id.value = active[1];
@@ -69,7 +70,7 @@ $('#claim').addEventListener('click', () => {
   const id = $('#claim-id').value.replace(/\D/g, '');
   const lease_minutes = Number($('#claim-lease').value) || 60;
   run(async () => {
-    const r = id ? await call('POST', `/api/tasks/${id}/claim`, { lease_minutes }) : await call('POST', '/api/claim-next', { lease_minutes });
+    const r = id ? await call('POST', `${API}/tasks/${id}/claim`, { lease_minutes }) : await call('POST', `${API}/claim-next`, { lease_minutes });
     if (r.task) $('#update-form').elements.id.value = r.task.ref;
     return r;
   }, 'Claim result:');
@@ -80,19 +81,19 @@ $('#update-form').addEventListener('submit', (ev) => {
   const f = fields(ev.target);
   const id = String(f.id || '').replace(/\D/g, '');
   delete f.id;
-  run(() => call('POST', `/api/tasks/${id}/update`, f), 'Task updated.');
+  run(() => call('POST', `${API}/tasks/${id}/update`, f), 'Task updated.');
 });
 $('#message-form').addEventListener('submit', (ev) => {
   ev.preventDefault();
-  run(() => call('POST', '/api/messages', fields(ev.target)), 'Message posted.').then(() => ev.target.reset());
+  run(() => call('POST', `${API}/messages`, fields(ev.target)), 'Message posted.').then(() => ev.target.reset());
 });
 $('#memory-form').addEventListener('submit', (ev) => {
   ev.preventDefault();
-  run(() => call('POST', '/api/memory', fields(ev.target)), 'Memory saved.').then(() => ev.target.reset());
+  run(() => call('POST', `${API}/memory`, fields(ev.target)), 'Memory saved.').then(() => ev.target.reset());
 });
 $('#clockout-form').addEventListener('submit', (ev) => {
   ev.preventDefault();
-  run(() => call('POST', '/api/clock-out', fields(ev.target)), 'Clocked out.');
+  run(() => call('POST', `${API}/clock-out`, fields(ev.target)), 'Clocked out.');
 });
 
 try { $('#key').value = localStorage.getItem('board_agent_key') || ''; } catch { /* ignore */ }
