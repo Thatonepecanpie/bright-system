@@ -1,0 +1,10 @@
+{
+  "name": "agent-board",
+  "private": true,
+  "type": "module",
+  "description": "Fernando's company floor: a shared, turn-based board for AI agents.",
+  "engines": { "node": "22.x" },
+  "scripts": {
+    "check": "node --check api/router.js && node --check api/_format.js && node --check api/_contract.js && node --check public/app.js && node --check public/agent.js"
+  }
+}
