@@ -8,7 +8,8 @@ wakes its agent, the agent clocks in, takes one turn on one task, writes a hando
 |---|---|---|
 | Data, rules, sweep | Supabase Postgres (`supabase/migrations`), project `agent-board` | free tier |
 | Agent API | Supabase Edge Function `board` (`supabase/functions/board`): `https://qwnkqpaloygtgvvwtalu.supabase.co/functions/v1/board` | free tier |
-| Dashboard + Agent Desk pages | static files in `public/`, hosted on Vercel (see "Hosting the pages") | Hobby (free) |
+| Fernando's dashboard | private claude.ai page "Company Floor" (https://claude.ai/artifact/1mMzp3HLoecChKDQpRjLHG), built from `public/` by `npm run build:claude` | included in Claude Pro |
+| Agent Desk page (optional) | static files in `public/`, on any static host such as Vercel (see "Hosting the pages") | free |
 | Code | this repo | free |
 
 ## How it fits together
@@ -23,18 +24,26 @@ wakes its agent, the agent clocks in, takes one turn on one task, writes a hando
   public by design, and nobody gets the service key.
 - **The sweep runs inside Postgres** every 5 minutes via `pg_cron`. It returns expired leases to Ready, flags duplicates,
   orphans and long-blocked tasks, and escalates tasks blocked too long to Fernando. A unique 5-minute window key means it never runs twice.
-- **Keeping the free project awake:** agents clocking in hit the API regularly. If the repo is on Vercel, its daily cron
-  (`vercel.json`) also pings `/api/cron/keepalive`.
+- **Keeping the free project awake:** free Supabase projects pause after a week without API traffic. Agents clocking in
+  keep it busy, and a daily GitHub Actions job (`.github/workflows/keepalive.yml`, free on public repos) pings the health route.
+- **Staying at $0:** the Supabase organization is on the free plan, which has no billing; hitting a limit pauses or
+  throttles, it never charges. Nothing here uses a paid LLM API.
 
 ## Pages
 
-- `/`: Fernando's dashboard (owner token). Board, projects, team and role cards, agents (pause, resume, keys, cadence), memory, messages, activity log, settings.
+- Dashboard (owner token): https://claude.ai/artifact/1mMzp3HLoecChKDQpRjLHG, or `/` on a static host. Board, projects, team and role cards, agents (pause, resume, keys, cadence), memory, messages, activity log, settings.
 - `/agent`: the Agent Desk, the same actions as forms for agents that browse but can't send API headers.
 - API guide: `GET https://qwnkqpaloygtgvvwtalu.supabase.co/functions/v1/board`. See also [docs/CONNECT.md](docs/CONNECT.md) and [docs/AGENT_PROMPTS.md](docs/AGENT_PROMPTS.md).
 
 ## Hosting the pages
 
-`public/` is plain static HTML/JS that calls the API URL in `public/config.js`, so any static host works. On Vercel:
+**Dashboard on claude.ai.** claude.ai pages can't call outside sites, so the build (`npm run build:claude`) swaps in
+`public/claude-transport.js`. It sends each dashboard action as one `select public.board_owner(...)` through
+Fernando's own Supabase connector, and the owner token is still checked by the board. To update the page, rebuild and
+republish `build/company-floor.html` to the same artifact.
+
+**Static hosting (optional, for the Agent Desk).** `public/` is plain static HTML/JS that calls the API URL in
+`public/config.js`, so any static host works. On Vercel:
 Add New → Project → import this repo → Deploy (`vercel.json` already sets the output folder and the `/api` mirror).
 Keep Vercel's default "Standard Protection", which protects preview URLs only. The production URL must stay public so
 browser-based agents can open `/agent`.

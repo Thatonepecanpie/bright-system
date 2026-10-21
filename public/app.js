@@ -72,7 +72,36 @@ function formData(form) {
   return out;
 }
 
+// In-page confirmation. Hosts like claude.ai ignore window.confirm().
+function ask(message, yesLabel = 'Confirm') {
+  const d = $('#ask');
+  $('#ask-text').textContent = message;
+  $('#ask-yes').textContent = yesLabel;
+  return new Promise((resolve) => {
+    const done = (v) => { d.close(); $('#ask-yes').onclick = $('#ask-no').onclick = null; resolve(v); };
+    $('#ask-yes').onclick = () => done(true);
+    $('#ask-no').onclick = () => done(false);
+    d.oncancel = () => done(false);
+    d.showModal();
+  });
+}
+
+async function copyText(text, el) {
+  try {
+    await navigator.clipboard.writeText(text);
+    flash('Copied.');
+  } catch {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    flash('Selected. Copy it with your device\'s copy command.', 'notice');
+  }
+}
+
 async function api(action, args = {}) {
+  // A host can supply its own transport (the claude.ai build routes through the Supabase connector).
+  if (window.BOARD_TRANSPORT) return window.BOARD_TRANSPORT(action, args, token());
   const r = await fetch(`${API}/owner/${action}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}`, 'X-Board-Client': 'dashboard' },
@@ -282,7 +311,7 @@ function viewSettings() {
     <div class="panel"><h2>Access</h2>
       <p class="small muted">Your owner token is stored only in this browser. Rotating it signs out every other device.</p>
       <div class="actions"><button class="btn" id="rotate-owner">Rotate my owner token</button><button class="btn danger" id="sign-out">Sign out on this device</button></div>
-      <p class="small muted">Agent page: <a href="/agent">/agent</a> · API guide for agents: <a href="https://qwnkqpaloygtgvvwtalu.supabase.co/functions/v1/board">board API guide</a></p></div>`;
+      <p class="small muted">${window.BOARD_AGENT_PAGE ? `Agent Desk: <a href="${esc(window.BOARD_AGENT_PAGE)}">${esc(window.BOARD_AGENT_PAGE)}</a> · ` : ''}API guide for agents: <a href="${esc(API)}" target="_blank" rel="noopener">${esc(API)}</a></p></div>`;
 }
 
 const VIEWS = { board: viewBoard, projects: viewProjects, team: viewTeam, agents: viewAgents, memory: viewMemory, messages: viewMessages, activity: viewActivity, settings: viewSettings };
@@ -404,7 +433,7 @@ function assignmentDialog(slug, agent) {
     f.project = slug;
     if (agent) f.agent = agent;
     if (action === 'remove') {
-      if (!confirm(`Remove ${agent} from ${slug}?`)) return;
+      if (!(await ask(`Remove ${agent} from ${slug}? Their role card is kept in the record.`, 'Remove'))) return;
       f.remove = true;
     }
     await act(() => api('save_assignment', f), action === 'remove' ? 'Removed.' : 'Role card saved.');
@@ -416,7 +445,7 @@ function showKey(agent, key) {
     <pre class="keybox" id="the-key">${esc(key)}</pre>
     <div class="actions"><button class="btn primary" id="copy-key">Copy</button></div>
     <p class="small muted">Paste it into ${esc(agent)}'s scheduled-job instructions. The old key has stopped working.</p>`);
-  $('#copy-key').addEventListener('click', () => navigator.clipboard.writeText(key).then(() => flash('Copied.')));
+  $('#copy-key').addEventListener('click', () => copyText(key, $('#the-key')));
 }
 
 function agentDialog(a = {}) {
@@ -433,7 +462,7 @@ function agentDialog(a = {}) {
     <label>Notes</label><textarea name="notes" rows="2">${esc(a.notes || '')}</textarea>
     <div class="actions"><button class="btn primary" value="save">Save</button>${a.id ? '<button class="btn" value="rotate">Issue new key</button>' : ''}</div>
   </form>`, async (f, action) => {
-    if (action === 'rotate' && !confirm(`Issue a new key for ${a.id}? The current key stops working immediately.`)) return;
+    if (action === 'rotate' && !(await ask(`Issue a new key for ${a.id}? The current key stops working immediately.`, 'Issue new key'))) return;
     await act(() => api('save_agent', f), 'Agent saved.');
     if (action === 'rotate' || !a.id) {
       const r = await api('rotate_agent_key', { agent: f.id });
@@ -500,10 +529,11 @@ document.addEventListener('click', async (ev) => {
   if (el.id === 'run-sweep') return act(() => api('run_sweep'), 'Sweep finished.').then((r) => flash('Sweep: ' + JSON.stringify(r)));
   if (el.id === 'save-hours') return act(() => api('save_setting', { key: 'blocked_escalate_hours', value: formData($('#hours-form')).value }), 'Saved.');
   if (el.id === 'rotate-owner') {
-    if (!confirm('Issue a new owner token? Every other device will be signed out.')) return;
+    if (!(await ask('Issue a new owner token? Every other device will be signed out.', 'Issue new token'))) return;
     const r = await api('rotate_owner_token', { label: 'dashboard' });
     setToken(r.token);
-    openDialog('Your new owner token', `<div class="success">Saved on this device. Store a copy somewhere safe (a password manager) to sign in on other devices.</div><pre class="keybox">${esc(r.token)}</pre>`);
+    openDialog('Your new owner token', `<div class="success">Saved on this device. Store a copy somewhere safe (a password manager) to sign in on other devices.</div><pre class="keybox" id="the-key">${esc(r.token)}</pre><div class="actions"><button class="btn primary" id="copy-key">Copy</button></div>`);
+    $('#copy-key').addEventListener('click', () => copyText(r.token, $('#the-key')));
     return;
   }
   if (el.id === 'sign-out') { setToken(''); location.reload(); }
