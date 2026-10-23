@@ -169,3 +169,126 @@ dialog.ask { width: min(420px, calc(100vw - 32px)); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
 .keybox { word-break: break-all; }
+
+/* ---------- Mission control ---------- */
+.hint { color: var(--muted); font-size: .85rem; margin: 0 0 .75rem; }
+.inline { display: inline-flex; align-items: center; gap: .35rem; margin: 0; color: var(--text); font-size: .9rem; cursor: pointer; }
+.inline input { width: auto; }
+.row-head { display: flex; justify-content: space-between; align-items: flex-start; gap: .75rem; flex-wrap: wrap; }
+.day { margin: 1rem 0 .25rem; font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+.day:first-child { margin-top: 0; }
+
+.summary-row { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.chip { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: .3rem .75rem; font-size: .9rem; font-variant-numeric: tabular-nums; }
+.chip[data-goto] { cursor: pointer; }
+.chip.attention { background: var(--gate-bg); border-color: var(--gate); color: var(--gate); }
+
+.pill.who { background: color-mix(in srgb, var(--c) 16%, var(--panel)); color: var(--text); box-shadow: inset 3px 0 0 var(--c); border-radius: 6px; }
+.pill.state-working { background: var(--ok-bg); color: var(--ok); }
+.pill.state-idle { background: var(--panel-2); color: var(--muted); }
+.pill.state-late { background: var(--warn-bg); color: var(--warn); }
+.pill.state-paused { background: var(--panel-2); color: var(--muted); }
+.pill.state-offline { background: var(--panel-2); color: var(--muted); }
+
+/* The Floor: one desk per agent. */
+.floor { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+.desk-card { background: var(--panel); border: 1px solid var(--line); border-top: 4px solid var(--c); border-radius: var(--radius); padding: .8rem .9rem; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: .45rem; min-width: 0; }
+.desk-card.st-paused, .desk-card.st-offline { border-top-color: var(--line); }
+.desk-top { display: flex; gap: .75rem; align-items: center; }
+.desk-id h3 { margin: 0; font-size: 1.05rem; }
+.desk-id .pill { margin-top: .25rem; }
+.desk-line { font-size: .9rem; overflow-wrap: anywhere; }
+.desk-line .label { display: block; font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.desk-actions { display: flex; gap: .35rem; flex-wrap: wrap; margin-top: auto; padding-top: .35rem; }
+
+.meter-row { font-size: .8rem; }
+.meter-label { display: flex; justify-content: space-between; gap: .5rem; color: var(--muted); margin-bottom: .2rem; }
+.meter { height: 7px; background: var(--panel-2); border-radius: 999px; overflow: hidden; }
+.meter-bar { height: 100%; border-radius: 999px; }
+.meter-bar.ok { background: var(--ok); }
+.meter-bar.warn { background: var(--warn); }
+.meter-bar.bad { background: var(--danger); }
+
+/* Agent sprite: a little bot at a desk. State classes drive the animation. */
+.sprite { width: 112px; height: 90px; flex: none; overflow: visible; }
+.sprite.mini { width: 56px; height: 45px; }
+.sprite .desk, .sprite .leg { fill: var(--line); }
+.sprite .laptop { fill: var(--muted); }
+.sprite .screen { fill: var(--panel-2); }
+.sprite .dots { fill: var(--c); opacity: 0; }
+.sprite .body { fill: var(--c); }
+.sprite .arm { fill: var(--c); filter: brightness(.85); }
+.sprite .head { fill: var(--c); }
+.sprite .antenna { stroke: var(--muted); stroke-width: 2.5; stroke-linecap: round; }
+.sprite .bulb { fill: var(--muted); }
+.sprite .eyes, .sprite .mouth { fill: #fff; }
+.sprite .eyes rect { transform-box: fill-box; transform-origin: center; }
+.sprite .zz { font: 700 12px var(--font-body); fill: var(--muted); opacity: 0; }
+.sprite .pause { opacity: 0; }
+.sprite .pause circle { fill: var(--panel); stroke: var(--muted); stroke-width: 2; }
+.sprite .pause rect { fill: var(--muted); }
+
+.sprite.st-working .screen { fill: color-mix(in srgb, var(--c) 22%, var(--panel)); }
+.sprite.st-working .dots { opacity: 1; }
+.sprite.st-working .dots circle { animation: dot 1.2s infinite ease-in-out; }
+.sprite.st-working .dots circle:nth-child(2) { animation-delay: .2s; }
+.sprite.st-working .dots circle:nth-child(3) { animation-delay: .4s; }
+.sprite.st-working .bot { animation: bob 1.6s infinite ease-in-out; }
+.sprite.st-working .arm { animation: type .35s infinite alternate ease-in-out; }
+.sprite.st-working .bulb { fill: var(--ok); }
+.sprite.st-working .eyes rect { animation: blink 4s infinite; }
+
+.sprite.st-idle .eyes rect { transform: scaleY(.3); }
+.sprite.st-idle .zz { animation: zz 3s infinite ease-in-out; }
+.sprite.st-idle .zz2 { animation-delay: 1.5s; }
+
+.sprite.st-late .bulb { fill: var(--warn); animation: flash 1s infinite steps(2); }
+.sprite.st-late .eyes rect { transform: scaleY(.6); }
+
+.sprite.st-paused .bot, .sprite.st-paused .laptop { filter: grayscale(1); opacity: .55; }
+.sprite.st-paused .pause { opacity: 1; }
+.sprite.st-offline { opacity: .4; filter: grayscale(1); }
+
+@keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes type { from { transform: translateX(0); } to { transform: translateX(-3px); } }
+@keyframes dot { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+@keyframes zz { 0% { opacity: 0; transform: translate(0, 4px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translate(4px, -6px); } }
+@keyframes flash { 50% { opacity: .2; } }
+@media (prefers-reduced-motion: reduce) {
+  .sprite *, .sprite { animation: none !important; }
+  .sprite.st-idle .zz { opacity: 1; }
+}
+
+.ping-head { display: flex; gap: 1rem; align-items: center; margin-bottom: .75rem; }
+.ping-head p { margin: .35rem 0 0; }
+
+/* Files and vault */
+.editor { min-height: 16rem; font-size: .85rem; line-height: 1.5; }
+.secret-row { display: flex; gap: .4rem; }
+.secret-row input { flex: 1; }
+.checks { display: flex; gap: .4rem 1rem; flex-wrap: wrap; padding: .3rem 0; }
+tr.revoked td { opacity: .6; }
+tr.cred-row td { background: var(--gate-bg); }
+
+/* Wins */
+.wins-agents { display: grid; gap: .6rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); margin-bottom: 1rem; }
+.win-agent { display: flex; align-items: center; gap: .6rem; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--c); border-radius: var(--radius); padding: .5rem .7rem; }
+
+@media (max-width: 480px) {
+  .sprite { width: 84px; height: 68px; }
+  .desk-actions .btn { flex: 1 1 auto; justify-content: center; }
+}
+.panel p a, .panel p code { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  table.stack thead { display: none; }
+  table.stack tr { display: block; padding: .55rem 0; border-bottom: 1px solid var(--line); }
+  table.stack tr:last-child { border-bottom: 0; }
+  table.stack td { display: block; border: 0; padding: .1rem 0; }
+  table.stack td:empty { display: none; }
+  table.stack td[colspan] { padding: .4rem 0; }
+}
+@media (max-width: 600px) {
+  table.stack.compact td + td { display: inline-block; margin-right: .6rem; vertical-align: middle; }
+  table.stack.compact td + td div { display: inline; margin-left: .3rem; }
+}

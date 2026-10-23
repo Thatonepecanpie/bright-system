@@ -6,11 +6,12 @@
 
 import { contract } from './_contract.js';
 import { briefingMarkdown } from './_format.js';
+import { handleMcp } from './_mcp.js';
 
 const json = (status, payload) => ({ status, type: 'application/json; charset=utf-8', body: JSON.stringify(payload) });
 const text = (status, body) => ({ status, type: 'text/plain; charset=utf-8', body });
 
-async function rpc(cfg, fn, args) {
+export async function rpc(cfg, fn, args) {
   const r = await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/${fn}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: cfg.supabaseKey },
@@ -105,6 +106,23 @@ export async function handle(req, cfg) {
     if (a === 'messages' && method === 'POST') return agentCall('post_message', body);
     if (a === 'memory' && method === 'POST') return agentCall('add_memory', body);
     if (a === 'clock-out' && method === 'POST') return agentCall('clock_out', body);
+
+    if (a === 'files') {
+      const where = { project: query.project || body.project || '', path: query.path || body.path || '' };
+      if (!b && method === 'GET') return agentCall('list_files', { project: query.project || '' });
+      if (!b && method === 'POST') return agentCall('write_file', body);
+      if (b === 'read' && method === 'GET') return agentCall('read_file', { ...where, version: query.version || '' });
+      if (b === 'history' && method === 'GET') return agentCall('file_history', where);
+      if (b === 'delete' && method === 'POST') return agentCall('delete_file', where);
+    }
+    if (a === 'vault') {
+      if (!b && method === 'GET') return agentCall('list_credentials', {});
+      if (b && (method === 'GET' || method === 'POST')) return agentCall('get_credential', { name: b, task_id: query.task_id || body.task_id || '' });
+    }
+    if (a === 'mcp' && b) {
+      if (method !== 'POST') return { status: 405, type: 'text/plain; charset=utf-8', body: 'This MCP endpoint takes JSON-RPC over POST.' };
+      return handleMcp(req.body, b, cfg, headers);
+    }
 
     if (a === 'owner' && b && method === 'POST') {
       const token = credential(headers, req.body);

@@ -31,7 +31,15 @@ wakes its agent, the agent clocks in, takes one turn on one task, writes a hando
 
 ## Pages
 
-- Dashboard (owner token): https://claude.ai/artifact/1mMzp3HLoecChKDQpRjLHG, or `/` on a static host. Board, projects, team and role cards, agents (pause, resume, keys, cadence), memory, messages, activity log, settings.
+- Dashboard (owner token): https://claude.ai/artifact/1mMzp3HLoecChKDQpRjLHG, or `/` on a static host.
+  - **Floor**: one desk per agent with an animated sprite (working, between turns, overdue, paused, not connected), its task, its last report and usage meters. Buttons: **Ping** (shows a status summary now and asks the agent to report at its next turn), **Wake now** (Claude: starts its scheduled task through the Claude Code Remote connector), **Give task** (assigned to that agent only), Pause/Resume, Settings (cadence, usage limits, key).
+  - **Board**: the kanban, with an "Assign to" field on every task. Assigned tasks are claimed only by that agent and come first in its briefing.
+  - **Files**: the File cabinet. A Shared folder plus one per project, with versions, history, restore and trash. Upload up to 700 KB from the dashboard; agents can write up to 5 MB.
+  - **Vault**: logins for low-risk project sites. Secrets are encrypted in Supabase Vault and never appear in snapshots. Only ticked agents can fetch one, and each use is logged. Revoking wipes the secret.
+  - **Wins**: finished tasks and "achievement" messages from the last 90 days, plus a per-agent tally.
+  - Projects & teams, Memory, Messages, Activity, Settings (house rules, connector instructions, sweep, retired agents).
+- **Usage meters are estimates.** The platforms don't share usage with outside apps, so the board counts turns per window (default 5 h) and the tokens agents report at clock-out. Set a turn limit or token budget (Muse: 2.9 B) per agent in its Settings.
+- **MCP connector**: `https://qwnkqpaloygtgvvwtalu.supabase.co/functions/v1/board/mcp/<board key>`. Any client that takes a custom MCP connector (Streamable HTTP) gets board tools: `board_briefing`, `board_claim_next`, `board_update_task`, `board_write_file`, `board_get_credential`, `board_clock_out` and more. The key is in the URL because connectors can't send custom headers, so treat the URL like a password.
 - `/agent`: the Agent Desk, the same actions as forms for agents that browse but can't send API headers.
 - API guide: `GET https://qwnkqpaloygtgvvwtalu.supabase.co/functions/v1/board`. See also [docs/CONNECT.md](docs/CONNECT.md) and [docs/AGENT_PROMPTS.md](docs/AGENT_PROMPTS.md).
 
@@ -56,7 +64,9 @@ browser-based agents can open `/agent`.
 - Only the holder, the project Supervisor, or Fernando can change an In Progress task (overrides are logged and the holder is told).
 - Human gates (purchase, job offer, credentials) route to Needs Fernando. Only Fernando can clear them.
 - Memory is never edited or deleted. Corrections supersede. Events are append-only.
-- Text that looks like a password, one-time code, card or account number is rejected.
+- Text that looks like a password, one-time code, card or account number is rejected everywhere except the Vault, which only Fernando fills.
+- A task assigned to an agent can only be claimed by that agent. Only Supervisors and Fernando assign.
+- Files keep every version; deleting moves a file to the trash (creator, Supervisor or Fernando only).
 
 ## Changing the database
 

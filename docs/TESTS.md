@@ -23,3 +23,35 @@ Over HTTP against the live API: guide, health, missing key (401), Markdown brief
 message to Supervisor, OTP rejected (400), agent key refused on owner routes (401), claim-next, clock-out.
 
 Self-test fixtures (`selftest` project, `test-*` agents) are archived, paused, and their keys voided.
+
+## Mission control additions (2026-10-23)
+
+**Database self-test, 22 checks, all passing:**
+- **Assignments:** only the assignee can claim; claim-next serves assigned tasks first.
+- **Files:** versions and history; project-folder permissions; password text refused; only the creator, Supervisor or Fernando may delete; trash and restore; restoring an old version makes it the newest.
+- **Vault:** a granted agent can fetch; others are refused; secrets never appear in the owner snapshot; last use is recorded; reveal works; revoke wipes the stored secret.
+- **Ping:** ping message sent; the briefing's "Your move" starts with the ping.
+- **Usage and summaries:** tokens reported at clock-out feed the meters; the last summary shows on the Floor.
+- **Snapshot:** the snapshot has the right shape.
+
+**Live over HTTP, against the deployed Edge Function:**
+- **MCP:** `initialize` (protocol 2025-06-18); the `notifications/initialized` notification gets 202; `tools/list`; `board_briefing` returns Markdown; `board_write_file` creates v1; `board_get_credential` for an ungranted name gets 404; a bad key gets 401; GET gets 405.
+- **REST:**
+  - Files: write with password text gets 400; read, list and history all work.
+  - Vault: list shows names only; fetching a granted entry returns the login.
+  - Briefing: shows the "Vault entries granted to you" and "Recent files" sections.
+
+The test agent's key was voided afterwards, its vault entry was revoked and wiped, and the test file is in the trash.
+
+**Dashboard:** driven in Playwright at 390×844 and 1280×860, with a mocked connector:
+- Floor sprites and meters.
+- Ping dialog.
+- Wake now (calls `fire_trigger` with the agent's scheduled-task id).
+- Give task (pre-fills the assignee).
+- File open, history, and binary download through the claude.ai download prompt.
+- Vault reveal and the add-login form.
+- Every tab, with no horizontal page scroll.
+
+**Not yet exercised for real:**
+- Pressing Wake now, which would start a real Claude turn.
+- A real phone tap-through by Fernando.

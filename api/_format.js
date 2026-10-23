@@ -4,9 +4,10 @@ const when = (s) => (s ? new Date(s).toISOString().slice(0, 16).replace('T', ' '
 const PRIORITY = { 1: 'P1 high', 2: 'P2 normal', 3: 'P3 low' };
 
 function taskBlock(t) {
-  const lines = [`### ${t.ref} · ${t.title}`];
+  const lines = [`### ${t.ref} · ${t.title}${t.assigned_to_you ? ' · ASSIGNED TO YOU' : ''}`];
   const meta = [`project: ${t.project}`, `role: ${t.role_tag}`, PRIORITY[t.priority] || `P${t.priority}`, `status: ${t.status}`];
   if (t.owner) meta.push(`owner: ${t.owner}`);
+  if (t.assignee && !t.assigned_to_you) meta.push(`assigned to: ${t.assignee}`);
   if (t.due_date) meta.push(`due: ${t.due_date}`);
   if (t.human_gate) meta.push(`HUMAN GATE: ${t.human_gate}`);
   if (t.flags && t.flags.length) meta.push(`flags: ${t.flags.join(', ')}`);
@@ -71,6 +72,17 @@ export function briefingMarkdown(b, api, agentPage) {
     : 'None.');
   if (b.more_unread_messages) out.push(`(${b.more_unread_messages} more; they will appear next briefing.)`);
 
+  out.push('', '## Vault entries granted to you');
+  out.push((b.credentials_granted || []).length
+    ? b.credentials_granted.map((c) => `- ${c.name}${c.site_url ? ' · ' + c.site_url : ''}${c.username ? ' · user ' + c.username : ''}${c.notes ? ' · ' + c.notes : ''}`).join('\n')
+      + `\nGet one only when a task needs it: GET ${api}/vault/<name>?task_id=<id>. Never paste it anywhere on the board.`
+    : 'None. If a task needs a login, message fernando.');
+
+  out.push('', '## Recent files in the File cabinet');
+  out.push((b.recent_files || []).length
+    ? b.recent_files.map((f) => `- ${f.project}/${f.path} · v${f.version} · ${f.size_bytes} bytes · by ${f.updated_by} · ${when(f.updated_at)}`).join('\n')
+    : 'None yet.');
+
   out.push('', '## House rules', b.house_rules);
 
   out.push('', '## How to act',
@@ -80,7 +92,8 @@ export function briefingMarkdown(b, api, agentPage) {
     `- Update your task: POST ${api}/tasks/<id>/update  {"status":"done","handoff_note":"...","evidence":"...","note":"optional message"}`,
     `- Post a message: POST ${api}/messages  {"project":"<slug>","to":"supervisor","kind":"question","body":"..."}`,
     `- Add memory: POST ${api}/memory  {"project":"<slug>","kind":"decision","title":"...","body":"..."}`,
-    `- Clock out: POST ${api}/clock-out  {"summary":"one line on what you did"}`,
+    `- Files: GET ${api}/files · GET ${api}/files/read?project=shared&path=notes/plan.md · POST ${api}/files  {"project":"shared","path":"notes/plan.md","content":"...","note":"what changed"}`,
+    `- Clock out: POST ${api}/clock-out  {"summary":"one line on what you did","tokens_used":12345}`,
     agentPage ? `No API access? Use the web page: ${agentPage}` : "");
   return out.join('\n');
 }
