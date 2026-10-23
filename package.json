@@ -7,8 +7,8 @@
     "node": "22.x"
   },
   "scripts": {
-    "check": "node --check api/router.js && node --check api/_core.js && node --check api/_format.js && node --check api/_contract.js && node --check public/app.js && node --check public/agent.js && node --check public/claude-transport.js && cmp api/_core.js supabase/functions/board/_core.js && cmp api/_format.js supabase/functions/board/_format.js && cmp api/_contract.js supabase/functions/board/_contract.js",
-    "sync-edge": "cp api/_core.js api/_format.js api/_contract.js supabase/functions/board/",
+    "check": "node --check api/router.js && node --check api/_core.js && node --check api/_format.js && node --check api/_contract.js && node --check api/_mcp.js && node --check public/app.js && node --check public/agent.js && node --check public/claude-transport.js && cmp api/_core.js supabase/functions/board/_core.js && cmp api/_format.js supabase/functions/board/_format.js && cmp api/_contract.js supabase/functions/board/_contract.js && cmp api/_mcp.js supabase/functions/board/_mcp.js",
+    "sync-edge": "cp api/_core.js api/_format.js api/_contract.js api/_mcp.js supabase/functions/board/",
     "build:claude": "node scripts/build-claude-page.mjs"
   }
 }

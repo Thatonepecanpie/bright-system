@@ -83,4 +83,35 @@
     const r = rows && rows[0] && rows[0].r;
     return typeof r === 'string' ? JSON.parse(r) : r;
   };
+
+  // "Wake now" starts an agent's scheduled task through the viewer's Claude Code Remote connector.
+  window.BOARD_WAKE = async function (triggerId) {
+    const mcp = await mcpReady;
+    if (!mcp) throw boardError('Connectors are not available in this view. Open the page on claude.ai.');
+    try {
+      await mcp.callTool('Claude Code Remote', 'fire_trigger', {
+        trigger_id: triggerId,
+        text: 'Fernando pressed "Wake now" on the Company Floor dashboard. Take your turn now.',
+      }, { cache: false });
+    } catch (e) {
+      if (e && e.code === 'server_not_connected') throw boardError('Wake now needs the Claude Code Remote connector. Allow it when claude.ai asks, then try again.');
+      if (e && e.code === 'tool_error') throw boardError('The scheduled task could not start: ' + String(e.message || '').slice(0, 200));
+      throw translate(e);
+    }
+  };
+
+  // Saving a file from the File cabinet goes through claude.ai's download prompt.
+  const downloadsReady = window.claude && window.claude.use ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
+  window.BOARD_DOWNLOAD = async function (filename, data) {
+    const downloads = await downloadsReady;
+    if (!downloads) throw boardError('Downloads are not available in this view.');
+    try {
+      await downloads.save({ filename, data });
+    } catch (e) {
+      if (e && e.code === 'declined') return;
+      if (e && e.code === 'rejected_extension') throw boardError('This file type can\'t be saved from here.');
+      if (e && e.code === 'rate_limited') throw boardError('A save prompt is already open. Try again in a moment.');
+      throw boardError('Saving is not available in this view.');
+    }
+  };
 }());
