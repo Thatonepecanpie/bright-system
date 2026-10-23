@@ -295,49 +295,22 @@ function viewFloor() {
   const working = agents.filter((a) => a.active_task).length;
   const waiting = state.snap.tasks.filter((t) => t.status === 'needs_fernando').length;
   const toMe = state.snap.messages.filter((m) => m.to_agent === 'fernando' && Date.now() - new Date(m.created_at).getTime() < 2 * 86400e3).length;
-  const desks = agents.map((a) => {
+  const team = agents.map((a) => {
     const [st, label] = agentState(a);
-    const task = a.active_task;
-    const win = a.usage_window_hours || 5;
-    const meters = [];
-    meters.push(a.turn_limit
-      ? meter(`Turns in the last ${win}h`, a.turns_in_window, a.turn_limit, `${a.turns_in_window} / ${a.turn_limit}`)
-      : `<div class="meter-row"><div class="meter-label"><span>Turns in the last ${win}h</span><span class="mono">${a.turns_in_window}</span></div></div>`);
-    if (a.token_budget) meters.push(meter('Token budget used', a.tokens_total, a.token_budget, `${fmtNum(a.tokens_total)} / ${fmtNum(a.token_budget)}`));
-    else if (a.tokens_in_window) meters.push(`<div class="meter-row"><div class="meter-label"><span>Tokens in the last ${win}h</span><span class="mono">${fmtNum(a.tokens_in_window)}</span></div></div>`);
-    return `<article class="desk-card st-${st}" style="--c:${colorFor(a.id)}">
-      <div class="desk-top">
-        ${sprite(a, st)}
-        <div class="desk-id">
-          <h3>${esc(a.display_name)}</h3>
-          <div class="small muted">${esc(a.platform)}</div>
-          <span class="pill state-${st}">${esc(label)}</span>
-        </div>
-      </div>
-      <div class="desk-line">${task
-        ? `<a href="#" data-task="${task.id}">${esc(task.ref)} · ${esc(task.title)}</a> <span class="muted small">· ${until(task.lease_expires_at)}</span>`
-        : a.assigned_ready ? `<span>${a.assigned_ready} task${a.assigned_ready > 1 ? 's' : ''} assigned, waiting for the next turn</span>` : '<span class="muted">No task in hand</span>'}</div>
-      <div class="desk-line"><span class="label">Last report</span> ${a.last_summary ? esc(a.last_summary) : '<span class="muted">No report yet</span>'}
-        ${a.last_summary_at ? `<span class="muted small">· ${ago(a.last_summary_at)}</span>` : ''}</div>
-      <div class="desk-line small muted">Seen ${ago(a.last_seen_at)} · clocks in ${esc(a.clock_in_every)} · ${a.tasks_done} done</div>
-      ${meters.join('')}
-      <div class="desk-actions">
-        <button class="btn small primary" data-ping="${esc(a.id)}">Ping</button>
-        ${a.wake_trigger_id && window.BOARD_WAKE ? `<button class="btn small" data-wake="${esc(a.id)}">Wake now</button>` : ''}
-        <button class="btn small" data-give="${esc(a.id)}">Give task</button>
-        <button class="btn small" data-toggle-agent="${esc(a.id)}">${a.status === 'active' ? 'Pause' : 'Resume'}</button>
-        <button class="btn small" data-edit-agent="${esc(a.id)}">Settings</button>
-      </div>
-    </article>`;
+    const what = a.active_task ? `${a.active_task.ref} · ${a.active_task.title}` : a.last_summary || 'No report yet';
+    return `<button class="team-row" data-office-select="${esc(a.id)}" style="--c:${colorFor(a.id)}">
+      <span class="of-dot"></span><span class="team-text"><span class="who">${esc(a.display_name)}</span> <span class="pill state-${st}">${esc(label)}</span>
+      <span class="what">${esc(what)}</span></span></button>`;
   }).join('');
-  return `${hint('Your agents and what each is doing. They work in turns on their own schedules, so "Between turns" is normal. Ping asks for a status report at their next turn.')}
+  return `${hint('Click an agent for details, right-click (or long-press) for options, drag to move it. Drop one on the bulletin board to give it a task. The bulletin board, mailbox, cabinet, safe and trophy shelf are shortcuts to their tabs.')}
     <div class="summary-row">
       <span class="chip"><strong>${working}</strong> working</span>
       <span class="chip"><strong>${agents.length - working}</strong> between turns or paused</span>
       <span class="chip ${waiting ? 'attention' : ''}" ${waiting ? 'data-goto="board"' : ''}><strong>${waiting}</strong> waiting on you</span>
       <span class="chip" ${toMe ? 'data-goto="messages"' : ''}><strong>${toMe}</strong> messages to you (48h)</span>
     </div>
-    <div class="floor">${desks || '<div class="empty">No agents yet. Add one under Settings.</div>'}</div>
+    <div id="office-slot"></div>
+    <div class="team">${team || '<div class="empty">No agents yet. Add one below.</div>'}</div>
     <div class="actions"><button class="btn" id="new-agent">+ Add agent</button></div>`;
 }
 
@@ -523,6 +496,7 @@ function render() {
   for (const b of document.querySelectorAll('.tab')) b.classList.toggle('active', b.dataset.view === state.view);
   const scrollY = window.scrollY;
   $('#view').innerHTML = VIEWS[state.view]();
+  if (state.view === 'floor' && typeof Office !== 'undefined') Office.attach($('#office-slot'));
   window.scrollTo(0, scrollY);
 }
 
