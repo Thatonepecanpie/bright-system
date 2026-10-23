@@ -174,13 +174,36 @@ async function api(action, args = {}) {
 
 async function load(quiet = false) {
   try {
+    const prev = state.snap;
     state.snap = await api('snapshot');
     $('#synced').textContent = 'synced ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     render();
+    if (prev) celebrateFinished(prev, state.snap);
+    else {
+      // First load: celebrate what finished since the last visit on this device (first visit: last 2 hours).
+      const since = Date.parse(recall('board_seen_at') || '') || Date.now() - 2 * 3600e3;
+      const before = state.snap.tasks.map((t) => (t.status === 'done' && Date.parse(t.updated_at) > since ? { ...t, status: 'review' } : t));
+      setTimeout(() => celebrateFinished({ tasks: before }, state.snap), 400);
+    }
+    remember('board_seen_at', state.snap.board_time || new Date().toISOString());
   } catch (e) {
     if (e.status === 401) return showLogin('That token was not accepted.');
     if (!quiet) flash(e.message, 'error');
   }
+}
+
+// Tasks that turned Done since the last refresh get confetti: from their card on the Board, and
+// from the agent who did the work on the Floor (it celebrates there later if the Floor is hidden).
+function celebrateFinished(prev, snap) {
+  const before = new Map(prev.tasks.map((t) => [t.id, t.status]));
+  const done = snap.tasks.filter((t) => t.status === 'done' && before.has(t.id) && before.get(t.id) !== 'done');
+  if (!done.length) return;
+  flash(done.length === 1 ? `🎉 ${done[0].ref} is done: ${done[0].title}` : `🎉 ${done.length} tasks are done!`);
+  for (const t of done) {
+    if (t.owner && typeof Office !== 'undefined') Office.celebrate(t.owner);
+    if (state.view !== 'floor' && typeof Confetti !== 'undefined') Confetti.fromElement($(`.card[data-task="${t.id}"]`));
+  }
+  if (state.view === 'floor' && !done.some((t) => t.owner) && typeof Confetti !== 'undefined') Confetti.fromElement(null);
 }
 
 async function act(fn, okMsg) {

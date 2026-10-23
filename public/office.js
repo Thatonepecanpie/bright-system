@@ -68,6 +68,7 @@ const Office = (() => {
     chat: '<circle class="bb-acc" r="9"/><circle class="ic-wf" cx="-3.6" r="1.3"/><circle class="ic-wf" r="1.3"/><circle class="ic-wf" cx="3.6" r="1.3"/>',
     q: '<circle class="bb" r="9"/><text class="ic-t" y="3.4">?</text>',
     sun: '<circle class="bb" r="9"/><circle class="ic-sun" r="3"/><path class="ic-sunray" d="M0 -6v1.6M0 4.4V6M-6 0h1.6M4.4 0H6M-4.2 -4.2l1.1 1.1M3.1 3.1l1.1 1.1M-4.2 4.2l1.1-1.1M3.1 -3.1l1.1-1.1"/>',
+    party: '<circle class="bb-gold" r="9"/><path class="ic-star" d="M0 -5.6 1.6 -1.8 5.6 -1.7 2.5 0.9 3.5 5 0 2.7 -3.5 5 -2.5 0.9 -5.6 -1.7 -1.6 -1.8z"/>',
     leaf: '<circle class="bb" r="9"/><path class="ic-leaf" d="M-4 4c0-5.5 3.5-8.5 8-8.5 0 5-3 8.5-8 8.5z"/><path class="ic" d="M-4 4 1.5 -1.5"/>',
   };
 
@@ -159,6 +160,7 @@ const Office = (() => {
   let spriteScale = 1, deskCount = 0, raf = 0, last = 0, lastClock = 0, firstUpdate = true, selected = '', menuFor = '';
   const agents = new Map();
   const seenMsgs = new Set();
+  const pendingParties = new Map(); // agent id -> when it finished, for parties missed while the Floor was hidden
   let drag = null;
 
   const seat = (o) => { const [x, y] = SLOTS[o.desk % SLOTS.length]; return { x: x + 0.9, y: y + 1.42 }; };
@@ -200,9 +202,11 @@ const Office = (() => {
       }
     }
     if (o.st === 'working') return goto(o, 'seat', seat(o), 'typing', 4000);
-    if (o.st === 'late') return goto(o, 'bulletin', SPOTS.bulletin, 'alert', 6000);
+    // Several agents at the board or the door stand side by side along the wall, not on one spot.
+    const along = (spot) => ({ x: spot.x, y: spot.y + ((o.desk % 4) - 1.5) * 0.65 });
+    if (o.st === 'late') return goto(o, 'bulletin', along(SPOTS.bulletin), 'alert', 6000);
     if (o.st === 'paused') { const k = ['coffeeW', 'coffeeE', 'coffeeN'][o.desk % 3]; return goto(o, k, SPOTS[k], 'pause', 8000); }
-    if (o.st === 'offline') return goto(o, 'door', SPOTS.door, 'q', 8000);
+    if (o.st === 'offline') return goto(o, 'door', along(SPOTS.door), 'q', 8000);
     const options = IDLE.filter((k) => k !== o.spot && (k === 'seat' || !taken(k, o)));
     const key = options[Math.floor(Math.random() * options.length)] || 'seat';
     goto(o, key, spotPos(o, key), ICON[key], 6000 + Math.random() * 8000);
@@ -214,12 +218,16 @@ const Office = (() => {
     o.el.setAttribute('transform', at);
     o.tag.setAttribute('transform', at);
     const moving = o.path.length > 0 || o.dragging;
+    const partying = now < o.partyUntil;
     o.el.classList.toggle('moving', moving);
-    if (moving && !reduced()) o.bob.setAttribute('transform', `translate(0 ${(-Math.abs(Math.sin(now / 95)) * 3).toFixed(1)})`);
+    o.el.classList.toggle('party', partying);
+    if (partying && !reduced()) o.bob.setAttribute('transform', `translate(0 ${(-Math.abs(Math.sin(now / 150)) * 9).toFixed(1)})`);
+    else if (moving && !reduced()) o.bob.setAttribute('transform', `translate(0 ${(-Math.abs(Math.sin(now / 95)) * 3).toFixed(1)})`);
     else o.bob.removeAttribute('transform');
     // Eyes look where the agent is going, or at the screen while it types.
     let [dx, dy] = o.dir;
     if (!moving && o.spot === 'seat') [dx, dy] = [0, -1];
+    if (partying) [dx, dy] = [-1, -1];
     let vx = (dx - dy) * C, vy = (dx + dy) * H;
     const len = Math.hypot(vx, vy) || 1;
     vx = (vx / len) * 1.4; vy = (vy / len) * 1.1;
@@ -227,7 +235,7 @@ const Office = (() => {
   }
 
   function step(o, now, dt) {
-    if (!o.dragging) {
+    if (!o.dragging && now >= o.partyUntil) {
       if (o.path.length) {
         const t = o.path[0];
         const dx = t.x - o.x, dy = t.y - o.y, dist = Math.hypot(dx, dy);
@@ -325,7 +333,7 @@ const Office = (() => {
     tag.innerHTML = '<g class="ag-bubble" transform="translate(13 -36)"></g><text class="ag-name" y="15"></text>';
     const o = {
       id: a.id, data: a, el, tag, desk, st: '', spot: '', icon: null, pendingIcon: null, path: [], dir: [0, 1],
-      dwellUntil: 0, dwellMs: 0, heldUntil: 0, dragging: false, event: null,
+      dwellUntil: 0, dwellMs: 0, heldUntil: 0, partyUntil: 0, dragging: false, event: null,
       bob: el.querySelector('.ag-bob'), pupils: el.querySelector('.ag-pupils'), bubble: tag.querySelector('.ag-bubble'),
     };
     el.__agent = o;
@@ -613,6 +621,25 @@ const Office = (() => {
     });
   }
 
+  // A finished task: the agent stops, jumps for joy, and confetti in its colour pops above it.
+  function party(o) {
+    const now = performance.now();
+    o.path = [];
+    o.partyUntil = now + 4200;
+    o.dwellUntil = o.partyUntil;
+    setIcon(o, 'party');
+    start();
+    const pop = (power) => {
+      const ctm = svg.getScreenCTM();
+      if (!ctm || !root.isConnected || typeof Confetti === 'undefined') return;
+      const [sx, sy] = P(o.x, o.y);
+      Confetti.burst(ctm.a * sx + ctm.e, ctm.d * (sy - 34 * spriteScale) + ctm.f,
+        { count: 60, power, spread: 0.8, colors: [colorFor(o.id), '#f4c84a', '#ffffff', '#5cc98b'] });
+    };
+    pop(0.8);
+    setTimeout(() => pop(0.65), 700);
+  }
+
   // ---------- public ----------
 
   return {
@@ -622,6 +649,16 @@ const Office = (() => {
       slot.appendChild(root);
       update(state.snap);
       start();
+      if (pendingParties.size) {
+        const due = [...pendingParties].filter(([, at]) => Date.now() - at < 60e3).map(([id]) => id);
+        pendingParties.clear();
+        requestAnimationFrame(() => due.forEach((id) => agents.has(id) && party(agents.get(id))));
+      }
+    },
+    celebrate(id) {
+      const o = agents.get(id);
+      if (o && root && root.isConnected && !document.hidden) party(o);
+      else pendingParties.set(id, Date.now());
     },
   };
 })();

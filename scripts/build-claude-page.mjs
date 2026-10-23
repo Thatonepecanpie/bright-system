@@ -21,6 +21,9 @@ window.BOARD_API = 'https://qwnkqpaloygtgvvwtalu.supabase.co/functions/v1/board'
 ${noClose(read('public/claude-transport.js'))}
 </script>
 <script>
+${noClose(read('public/confetti.js'))}
+</script>
+<script>
 ${noClose(read('public/office.js'))}
 </script>
 <script>
