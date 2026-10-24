@@ -156,7 +156,7 @@ const Office = (() => {
 
   // ---------- state ----------
 
-  let root, svg, world, overlay, pop, menu;
+  let root, svg, world, overlay, pop, menu, sayBox, saying = null;
   let spriteScale = 1, deskCount = 0, raf = 0, last = 0, lastClock = 0, firstUpdate = true, selected = '', menuFor = '';
   const agents = new Map();
   const seenMsgs = new Set();
@@ -282,6 +282,10 @@ const Office = (() => {
     for (const o of agents.values()) step(o, now, dt);
     sortDepth();
     if (selected) placeFloating(pop, agents.get(selected), 22);
+    if (saying) {
+      if (Date.now() > saying.until) { saying = null; sayBox.classList.add('hidden'); }
+      else placeSay();
+    }
     if (now - lastClock > 15000) { lastClock = now; tickClock(); }
     raf = requestAnimationFrame(frame);
   }
@@ -299,10 +303,12 @@ const Office = (() => {
     const minX = -D * C - 12, maxX = W * C + 12, minY = -WALL * S - 14, maxY = (W + D) * H + 18;
     root.innerHTML = `<svg viewBox="${minX.toFixed(0)} ${minY.toFixed(0)} ${(maxX - minX).toFixed(0)} ${(maxY - minY).toFixed(0)}" role="group" aria-label="Office floor"></svg>
       <div class="of-pop hidden" role="dialog" aria-label="Agent status"></div>
-      <div class="of-menu hidden" role="menu"></div>`;
+      <div class="of-menu hidden" role="menu"></div>
+      <div class="of-say hidden" aria-live="polite"></div>`;
     svg = root.querySelector('svg');
     pop = root.querySelector('.of-pop');
     menu = root.querySelector('.of-menu');
+    sayBox = root.querySelector('.of-say');
     bindEvents();
     document.addEventListener('visibilitychange', start);
   }
@@ -641,6 +647,19 @@ const Office = (() => {
     setTimeout(() => pop(0.65), 700);
   }
 
+  // A speech card over an agent for a reply that just arrived.
+  function placeSay() {
+    const o = agents.get(saying.id);
+    const ctm = svg.getScreenCTM();
+    if (!o || !ctm) return;
+    const r = root.getBoundingClientRect();
+    const [sx, sy] = P(o.x, o.y);
+    const px = ctm.a * sx + ctm.e - r.left, py = ctm.d * (sy - 40 * spriteScale) + ctm.f - r.top;
+    const w = sayBox.offsetWidth, h = sayBox.offsetHeight;
+    sayBox.style.left = `${Math.max(6, Math.min(px - w / 2, r.width - w - 6))}px`;
+    sayBox.style.top = `${Math.max(6, py - h - 6)}px`;
+  }
+
   // ---------- public ----------
 
   return {
@@ -655,6 +674,15 @@ const Office = (() => {
         pendingParties.clear();
         requestAnimationFrame(() => due.forEach((id) => agents.has(id) && party(agents.get(id))));
       }
+    },
+    say(id, text) {
+      if (!root) return;
+      saying = { id, until: Date.now() + 15000 };
+      sayBox.innerHTML = `<strong>${esc((agents.get(id) || { data: { display_name: id } }).data.display_name)}</strong> ${esc(String(text).slice(0, 220))}`;
+      sayBox.classList.remove('hidden');
+      const o = agents.get(id);
+      if (o) setIcon(o, 'chat');
+      if (root.isConnected) { placeSay(); start(); }
     },
     celebrate(id) {
       const o = agents.get(id);

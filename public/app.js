@@ -179,6 +179,7 @@ async function load(quiet = false) {
     $('#synced').textContent = 'synced ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     render();
     syncSchedules();
+    if (prev) showReplies(prev, state.snap);
     if (prev) celebrateFinished(prev, state.snap);
     else {
       // First load: celebrate what finished since the last visit on this device (first visit: last 2 hours).
@@ -190,6 +191,24 @@ async function load(quiet = false) {
   } catch (e) {
     if (e.status === 401) return showLogin('That token was not accepted.');
     if (!quiet) flash(e.message, 'error');
+  }
+}
+
+// New messages to Fernando from an agent: show them as they land (the ping window, a note, and a
+// speech bubble over the agent on the Floor).
+function showReplies(prev, snap) {
+  const seen = Math.max(0, ...prev.messages.map((m) => m.id));
+  const agents = new Set(snap.agents.map((a) => a.id));
+  const fresh = snap.messages.filter((m) => m.id > seen && m.to_agent === 'fernando' && agents.has(m.author)).reverse();
+  for (const m of fresh) {
+    flash(`💬 ${agentName(m.author)}: ${m.body}`);
+    if (typeof Office !== 'undefined') Office.say(m.author, m.body);
+    const box = $('#ping-reply');
+    if (box && state.live && state.live.agent === m.author) {
+      box.innerHTML = `<strong>💬 ${esc(agentName(m.author))}</strong> <span class="muted small">just now</span><br>${esc(m.body)}`;
+      box.classList.add('got');
+    }
+    if (state.live && state.live.agent === m.author) state.live = null;
   }
 }
 
@@ -684,14 +703,38 @@ function scheduleDialog(id, mode) {
 
 // ---------- floor actions ----------
 
+// Live pings. Claude is woken through claude.ai's Claude Code Remote connector and answers in about a
+// minute; other agents can be pinged from their own app with the message ready (ChatGPT opens with it
+// typed in). Either way the board relays the reply, and the dashboard checks every few seconds until it lands.
+const CHAT_LINKS = { chatgpt: (msg) => `https://chatgpt.com/?q=${encodeURIComponent(msg)}` };
+const PING_MESSAGE = 'Company Floor ping from Fernando: use your Company Floor tools now. Call board_briefing, then board_post_message to "fernando" with one line on what you are doing and what is next, then board_clock_out.';
+const WAKE_FOR_PING = 'Fernando pinged you from the Company Floor dashboard. Take a short turn now: read your briefing, post a one-line status message to fernando (what you are doing and what is next), then clock out.';
+const LIVE_MS = 4 * 60e3;
+
 async function pingAgent(id) {
   try {
     const s = await act(() => api('ping_agent', { agent: id }));
     const [st, label] = agentState(s);
+    let how = `Ping sent. ${esc(s.display_name)} will post a status message to you at the start of its next turn.`;
+    if (s.wake_trigger_id && window.BOARD_WAKE) {
+      try {
+        await window.BOARD_WAKE(s.wake_trigger_id, WAKE_FOR_PING);
+        how = `⚡ ${esc(s.display_name)} is waking up now. Its reply will appear right here in about a minute.`;
+      } catch (e) { how += ` (Couldn't wake it now: ${esc(e.message)})`; }
+    } else if (CHAT_LINKS[s.id]) {
+      how = `Ping sent. To hear back now, send it the message from its own app; its reply will appear right here:
+        <div class="actions"><a class="btn small primary" href="${esc(CHAT_LINKS[s.id](PING_MESSAGE))}" target="_blank" rel="noopener">Open ${esc(s.display_name)} with the message</a>
+        <button class="btn small" type="button" data-copy-ping>Copy message</button></div>
+        <span class="muted">If its Company Floor connector lives in a desktop app, paste the message there instead.</span>`;
+    } else {
+      how += ` <button class="btn small" type="button" data-copy-ping>Copy a message to send it yourself</button>`;
+    }
+    state.live = { agent: s.id, until: Date.now() + LIVE_MS };
     openDialog(`${s.display_name}: status`, `<div class="ping-head" style="--c:${colorFor(s.id)}">${sprite(s, st)}<div>
         <span class="pill state-${st}">${esc(label)}</span>
         <p class="small">Seen ${ago(s.last_seen_at)} · clocks in ${esc(s.clock_in_every)} · ${s.turns_in_window} turn${s.turns_in_window === 1 ? '' : 's'} in the last ${s.usage_window_hours}h</p></div></div>
-      <div class="success small">Ping sent. ${esc(s.display_name)} will post a status message to you at the start of its next turn.</div>
+      <div class="success small">${how}</div>
+      <div id="ping-reply" class="ping-reply"><span class="muted">Waiting for ${esc(s.display_name)}'s reply…</span></div>
       <h3>Working on</h3><p>${s.active_task ? `${esc(s.active_task.ref)} · ${esc(s.active_task.title)} <span class="muted small">(${until(s.active_task.lease_expires_at)})</span>${s.active_task.handoff_note ? `<pre>${esc(s.active_task.handoff_note)}</pre>` : ''}` : '<span class="muted">No task in hand.</span>'}</p>
       <h3>Last report</h3><p>${s.last_summary ? esc(s.last_summary) + ` <span class="muted small">· ${ago(s.last_summary_at)}</span>` : '<span class="muted">No report yet.</span>'}</p>
       <h3>Recent activity</h3>${(s.recent_events || []).map((e) => `<div class="small">${ago(e.at)} · ${esc(e.action.replace(/_/g, ' '))}${e.task_id ? ' T-' + e.task_id : ''}</div>`).join('') || '<div class="small muted">Nothing yet.</div>'}
@@ -703,7 +746,7 @@ async function wakeAgent(id) {
   const a = state.snap.agents.find((x) => x.id === id);
   if (!(await ask(`Start ${a.display_name}'s turn now? It uses your ${a.platform} plan's usage like a scheduled turn.`, 'Wake now'))) return;
   try {
-    await window.BOARD_WAKE(a.wake_trigger_id, a.display_name);
+    await window.BOARD_WAKE(a.wake_trigger_id);
     flash(`${a.display_name}'s turn has started. Its report will appear on the Floor when it clocks out.`);
   } catch (e) { flash(e.message, 'error'); }
 }
@@ -955,7 +998,7 @@ function messageDialog(to = '') {
 // ---------- events ----------
 
 document.addEventListener('click', async (ev) => {
-  const el = ev.target.closest('a[data-task], .card[data-task], [data-goto], [data-ping], [data-wake], [data-give], [data-edit-project], [data-new-assignment], [data-edit-assignment], [data-toggle-agent], [data-edit-agent], [data-correct-memory], [data-file], [data-file-history], [data-file-version], [data-file-restore], [data-file-delete], [data-undelete], [data-vault-edit], [data-vault-reveal], [data-vault-revoke], [data-sched-approve], [data-sched-change], [data-sched-decline], #run-manager, #save-manager, #new-task, #new-project, #new-agent, #new-memory, #new-message, #new-file, #upload-file, #new-cred, #run-sweep, #save-hours, #rotate-owner, #sign-out');
+  const el = ev.target.closest('a[data-task], .card[data-task], [data-goto], [data-ping], [data-wake], [data-give], [data-edit-project], [data-new-assignment], [data-edit-assignment], [data-toggle-agent], [data-edit-agent], [data-correct-memory], [data-file], [data-file-history], [data-file-version], [data-file-restore], [data-file-delete], [data-undelete], [data-vault-edit], [data-vault-reveal], [data-vault-revoke], [data-copy-ping], [data-sched-approve], [data-sched-change], [data-sched-decline], #run-manager, #save-manager, #new-task, #new-project, #new-agent, #new-memory, #new-message, #new-file, #upload-file, #new-cred, #run-sweep, #save-hours, #rotate-owner, #sign-out');
   if (!el) return;
   const d = el.dataset;
   if (el.tagName === 'A') ev.preventDefault();
@@ -981,6 +1024,7 @@ document.addEventListener('click', async (ev) => {
     return;
   }
   if (d.undelete) return act(() => api('file_restore', { file_id: Number(d.undelete) }), 'File restored.').catch(() => {});
+  if (el.matches('[data-copy-ping]')) return copyText(PING_MESSAGE, el);
   if (d.schedApprove) return decideSchedule(Number(d.schedApprove), 'approve');
   if (d.schedChange) return scheduleDialog(Number(d.schedChange), 'change');
   if (d.schedDecline) return scheduleDialog(Number(d.schedDecline), 'decline');
@@ -1081,4 +1125,5 @@ if (token()) {
   showLogin();
 }
 setInterval(() => { if (document.visibilityState === 'visible' && token() && !$('#dialog').open && !$('#ask').open) load(true); }, 60000);
+setInterval(() => { if (state.live && Date.now() < state.live.until && document.visibilityState === 'visible' && token()) load(true); }, 5000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && token()) load(true); });
