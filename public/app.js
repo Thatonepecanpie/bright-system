@@ -178,6 +178,7 @@ async function load(quiet = false) {
     state.snap = await api('snapshot');
     $('#synced').textContent = 'synced ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     render();
+    syncSchedules();
     if (prev) celebrateFinished(prev, state.snap);
     else {
       // First load: celebrate what finished since the last visit on this device (first visit: last 2 hours).
@@ -256,6 +257,25 @@ const agentIds = () => liveAgents().map((a) => a.id);
 const agentName = (id) => (state.snap.agents.find((a) => a.id === id) || {}).display_name || id;
 const visibleTasks = () => state.snap.tasks.filter((t) => !state.project || t.project === state.project);
 const hint = (text) => `<p class="hint">${text}</p>`;
+const pendingRequests = () => (state.snap.schedule_requests || []).filter((r) => r.status === 'pending');
+const needsMe = () => state.snap.tasks.filter((t) => t.status === 'needs_fernando').length + pendingRequests().length;
+const skillsVocab = () => (state.snap.manager && state.snap.manager.skills_vocab) || [];
+const skillChecks = (selected = []) => `<div class="checks">${skillsVocab().map((k) => `<label class="inline"><input type="checkbox" name="skills" data-group="skills" value="${k}"${selected.includes(k) ? ' checked' : ''}> ${k}</label>`).join('')}</div>`;
+
+// The Floor Manager's corner: schedule changes waiting for Fernando, and how recent work was routed.
+function managerPanel() {
+  const reqs = pendingRequests();
+  const routed = state.snap.events.filter((e) => e.action === 'routed').slice(0, 3);
+  if (!reqs.length && !routed.length) return '';
+  const cards = reqs.map((r) => `<div class="mgr-req">
+      <div><strong>${esc(agentName(r.agent_id))}</strong> ${r.source === 'agent' ? 'asks' : '<span class="muted">· Floor Manager suggests</span>'} to run <strong>${esc(r.every)}</strong>${r.until ? ' until ' + esc(stamp(r.until)) : ''} <span class="muted small">(now ${esc(r.prev_every)})</span>
+        <div class="small muted">${esc(r.reason)}</div></div>
+      <div class="actions" style="margin:0"><button class="btn small primary" data-sched-approve="${r.id}">Approve</button><button class="btn small" data-sched-change="${r.id}">Change…</button><button class="btn small" data-sched-decline="${r.id}">Decline</button></div>
+    </div>`).join('');
+  const log = routed.map((e) => `<li>${ago(e.at)} · <a href="#" data-task="${e.task_id}">T-${e.task_id}</a> → <strong>${esc(agentName(e.detail.to))}</strong>${e.detail.from && e.detail.from !== e.detail.to ? ` <span class="muted">(was ${esc(agentName(e.detail.from))})</span>` : ''} <span class="muted">· ${esc((e.detail.why || []).join(', '))}</span></li>`).join('');
+  return `<section class="panel mgr"><div class="row-head"><h2>🧭 Floor Manager</h2><button class="btn small" id="run-manager">Run now</button></div>
+    ${cards}${log ? `<div class="small muted mgr-sub">Recent routing</div><ul class="mgr-log">${log}</ul>` : ''}</section>`;
+}
 
 function agentState(a) {
   if (a.status === 'paused') return ['paused', 'Paused'];
@@ -316,7 +336,7 @@ function taskCard(t) {
 function viewFloor() {
   const agents = liveAgents();
   const working = agents.filter((a) => a.active_task).length;
-  const waiting = state.snap.tasks.filter((t) => t.status === 'needs_fernando').length;
+  const waiting = needsMe();
   const toMe = state.snap.messages.filter((m) => m.to_agent === 'fernando' && Date.now() - new Date(m.created_at).getTime() < 2 * 86400e3).length;
   const team = agents.map((a) => {
     const [st, label] = agentState(a);
@@ -332,6 +352,7 @@ function viewFloor() {
       <span class="chip ${waiting ? 'attention' : ''}" ${waiting ? 'data-goto="board"' : ''}><strong>${waiting}</strong> waiting on you</span>
       <span class="chip" ${toMe ? 'data-goto="messages"' : ''}><strong>${toMe}</strong> messages to you (48h)</span>
     </div>
+    ${managerPanel()}
     <div id="office-slot"></div>
     <div class="team">${team || '<div class="empty">No agents yet. Add one below.</div>'}</div>
     <div class="actions"><button class="btn" id="new-agent">+ Add agent</button></div>`;
@@ -346,8 +367,9 @@ function viewBoard() {
       ${list.map(taskCard).join('') || '<div class="empty small">Nothing here.</div>'}
     </section>`;
   }).join('');
-  return `${hint('Every task and where it stands. Agents claim Ready tasks for their role, or ones you assign to them by name. Tap a card to edit, approve or reassign it.')}
+  return `${hint('Every task and where it stands. Leave "Assign to" on "Let the Floor decide" and the Floor Manager gives it to the best-suited free agent, with its reasons. Tap a card to edit, approve or reassign it.')}
     <div class="actions" style="margin:0 0 .75rem"><button class="btn primary" id="new-task">+ New task</button></div>
+    ${managerPanel()}
     <div class="board">${cols}</div>`;
 }
 
@@ -495,6 +517,11 @@ function viewSettings() {
         <code>${esc(API)}/mcp/&lt;that agent's board key&gt;</code>. The agent then gets board tools such as board_briefing and board_write_file.
         Treat that address like a password.</p>
       <p class="small muted">Lost a key? Open the agent's Settings on the Floor and choose "Issue new key".</p></div>
+    <div class="panel"><h2>🧭 Floor Manager</h2>
+      <p class="small muted">Runs inside the database every 10 minutes, and right after you create a task. No AI calls, so it costs nothing.</p>
+      <label class="inline"><input type="checkbox" id="mgr-route"${(state.snap.manager || {}).settings && state.snap.manager.settings.auto_route === false ? '' : ' checked'}> Route open work to the best-suited free agent, and move work stuck with an agent who is away</label>
+      <label class="inline"><input type="checkbox" id="mgr-effort"${(state.snap.manager || {}).settings && state.snap.manager.settings.auto_effort === false ? '' : ' checked'}> Suggest faster or slower schedules from each agent's workload (you approve each one)</label>
+      <div class="actions"><button class="btn" id="save-manager">Save</button><button class="btn" id="run-manager">Run now</button></div></div>
     <div class="panel"><h2>Sweep</h2>
       <p class="small muted">Runs inside the database every 5 minutes: returns stale tasks to Ready, flags duplicates, orphans and long-blocked tasks, and escalates tasks that stay blocked too long to you.</p>
       <form id="hours-form" class="row"><div><label for="hours">Flag a Blocked task after (hours)</label><input id="hours" name="value" type="number" min="1" value="${esc(s.blocked_escalate_hours || '48')}"></div></form>
@@ -514,7 +541,7 @@ function render() {
   if (!state.snap) return;
   const sel = $('#project-filter');
   sel.innerHTML = `<option value="">All projects</option>` + activeProjects().map((p) => `<option value="${esc(p.slug)}"${p.slug === state.project ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
-  const waiting = state.snap.tasks.filter((t) => t.status === 'needs_fernando').length;
+  const waiting = needsMe();
   $('#needs-me').innerHTML = waiting ? `<a href="#" data-goto="board"><span class="badge">${waiting}</span> need you</a>` : '';
   for (const b of document.querySelectorAll('.tab')) b.classList.toggle('active', b.dataset.view === state.view);
   const scrollY = window.scrollY;
@@ -534,11 +561,12 @@ function taskForm(t = {}) {
     ${t.status === 'needs_fernando' ? `<div class="notice"><strong>Waiting on you.</strong> ${t.human_gate ? 'Human gate: ' + esc(t.human_gate) + '. ' : ''}Read the handoff note, then approve or send it back.
       ${t.handoff_note ? `<pre style="margin-top:.5rem">${esc(t.handoff_note)}</pre>` : ''}${t.evidence ? `<div class="small" style="margin-top:.35rem">Evidence: ${esc(t.evidence)}</div>` : ''}
       <div class="actions"><button class="btn primary" value="approve">Approve → Done</button><button class="btn" value="sendback">Send back → Ready</button></div></div>` : ''}
+    ${t.route_reason ? `<p class="small route-why">🧭 ${esc(t.route_reason)}</p>` : ''}
     <label for="f-title">Title</label><input id="f-title" name="title" required maxlength="200" value="${esc(t.title || '')}">
     <div class="row">
       <div><label for="f-project">Project</label><select id="f-project" name="project" ${isNew ? '' : 'disabled'}>${options(projects.map((p) => [p.slug, p.name]), t.project || state.project || (projects[0] || {}).slug)}</select></div>
-      <div><label for="f-assignee">Assign to</label><select id="f-assignee" name="assignee">${options([['', 'Anyone with the role'], ...liveAgents().map((a) => [a.id, a.display_name])], t.assignee || '')}</select></div>
-      <div><label for="f-role">Role (if not assigned)</label><input id="f-role" name="role_tag" value="${esc(t.role_tag || 'any')}" placeholder="any, researcher, filer..."></div>
+      <div><label for="f-assignee">Assign to</label><select id="f-assignee" name="assignee">${options([['', 'Let the Floor decide'], ...liveAgents().map((a) => [a.id, a.display_name])], t.assignee || '')}</select></div>
+      <div><label for="f-role">Role (optional)</label><input id="f-role" name="role_tag" value="${esc(t.role_tag || 'any')}" placeholder="any, researcher, filer..."></div>
     </div>
     <div class="row">
       <div><label for="f-status">Status</label><select id="f-status" name="status">${options(STATUSES.filter(([k]) => k !== 'in_progress' || t.status === 'in_progress').filter(([k]) => !isNew || k === 'ready' || k === 'backlog'), t.status || 'ready')}</select></div>
@@ -546,13 +574,14 @@ function taskForm(t = {}) {
       <div><label for="f-due">Due date</label><input id="f-due" name="due_date" type="date" value="${esc(t.due_date || '')}"></div>
       <div><label for="f-gate">Human gate</label><select id="f-gate" name="human_gate">${options(GATES, t.human_gate || '')}</select></div>
     </div>
+    <label>Skills needed <span class="muted">(optional; the Floor guesses from the title if blank)</span></label>${skillChecks(t.skills || [])}
     <label for="f-desc">Description</label><textarea id="f-desc" name="description">${esc(t.description || '')}</textarea>
     <label for="f-next">Next action</label><input id="f-next" name="next_action" value="${esc(t.next_action || '')}">
     <label for="f-deps">Depends on (task ids, comma separated)</label><input id="f-deps" name="depends_on" value="${esc((t.depends_on || []).join(', '))}">
     ${isNew ? '' : `<label for="f-handoff">Handoff note</label><textarea id="f-handoff" name="handoff_note">${esc(t.handoff_note || '')}</textarea>
     <label for="f-evidence">Evidence</label><input id="f-evidence" name="evidence" value="${esc(t.evidence || '')}">`}
     <label for="f-note">Note to post with this change (optional)</label><input id="f-note" name="note" placeholder="Becomes a message on the task">
-    <div class="actions"><button class="btn primary" value="save">${isNew ? 'Create task' : 'Save'}</button></div>
+    <div class="actions"><button class="btn primary" value="save">${isNew ? 'Create task' : 'Save'}</button>${!isNew && ['ready', 'backlog', 'blocked'].includes(t.status) ? '<button class="btn" value="reroute">Let the Floor re-route it</button>' : ''}</div>
     ${isNew ? '' : `<h3 style="margin-top:1.2rem">Messages</h3>${(t.messages || []).map((m) => `<div class="list-item small"><strong>${esc(agentName(m.author))}</strong> → ${esc(m.to_agent ? agentName(m.to_agent) : 'everyone')} · ${stamp(m.created_at)}<br>${esc(m.body)}</div>`).join('') || '<div class="empty small">None.</div>'}
     <h3 style="margin-top:1rem">History</h3>${(t.events || []).map((e) => `<div class="small">${stamp(e.at)} · <strong>${esc(agentName(e.actor))}</strong> ${esc(e.action.replace(/_/g, ' '))}${e.detail && e.detail.to ? ' → ' + esc(e.detail.to) : ''}</div>`).join('')}`}
   </form>`;
@@ -573,6 +602,11 @@ async function openTask(id) {
       const p = taskPayload(f);
       delete p.project;
       p.id = t.id;
+      if (action === 'reroute') {
+        const r = await act(() => api('route_task', { id: t.id, exclude: t.assignee || '' }));
+        flash(`🧭 ${t.ref} → ${agentName(r.to)}: ${(r.why || []).join(', ')}`);
+        return;
+      }
       if (action === 'approve') p.status = 'done';
       if (action === 'sendback') p.status = 'ready';
       if (p.status === t.status) delete p.status;
@@ -589,8 +623,63 @@ function newTask(preset = {}) {
     const p = taskPayload(f);
     if (!p.human_gate) delete p.human_gate;
     if (!p.assignee) delete p.assignee;
-    await act(() => api('create_task', p), p.assignee ? `Task created for ${agentName(p.assignee)}. They'll pick it up on their next turn.` : 'Task created.');
+    const r = await act(() => api('create_task', p), p.assignee ? `Task created for ${agentName(p.assignee)}. They'll pick it up on their next turn.` : 'Task created.');
+    if (r && r.routed) flash(`🧭 ${r.ref} → ${agentName(r.routed.to)}: ${(r.routed.why || []).join(', ')}`);
   });
+}
+
+// ---------- schedule requests ----------
+
+const applying = new Set();
+// Claude's scheduled task is changed from here (Claude Code Remote connector); other agents change their own.
+async function applyClaudeSchedule(r) {
+  const agent = state.snap.agents.find((a) => a.id === r.agent_id);
+  const trigger = r.wake_trigger_id || (agent && agent.wake_trigger_id);
+  if (!trigger || applying.has(r.id)) return;
+  const every = r.status === 'expired' ? r.prev_every : r.every;
+  if (!window.BOARD_SCHEDULE) {
+    flash(`Change ${agentName(r.agent_id)}'s scheduled task to "${every}" by hand; this view can't reach the Claude Code Remote connector.`, 'notice');
+    return;
+  }
+  applying.add(r.id);
+  try {
+    await window.BOARD_SCHEDULE(trigger, every);
+    await api('schedule_applied', { id: r.id });
+    flash(`${agentName(r.agent_id)} now runs ${every}.`);
+    load(true);
+  } catch (e) {
+    flash(`Couldn't update ${agentName(r.agent_id)}'s scheduled task: ${e.message}`, 'error');
+  } finally {
+    applying.delete(r.id);
+  }
+}
+
+// After every refresh: finish any approved or ended change for agents whose schedule lives here.
+function syncSchedules() {
+  for (const r of state.snap.schedule_requests || []) {
+    const agent = state.snap.agents.find((a) => a.id === r.agent_id);
+    if ((r.status === 'approved' || r.status === 'expired') && agent && agent.wake_trigger_id) applyClaudeSchedule(r);
+  }
+}
+
+async function decideSchedule(id, decision, every = '', note = '') {
+  try {
+    const r = await act(() => api('decide_schedule', { id, decision, every, note }),
+      decision === 'approve' ? 'Approved. The agent has been told.' : 'Declined. The agent has been told.');
+    if (decision === 'approve' && r && r.wake_trigger_id) await applyClaudeSchedule(r);
+  } catch { /* act already flashed */ }
+}
+
+function scheduleDialog(id, mode) {
+  const r = (state.snap.schedule_requests || []).find((x) => x.id === id);
+  if (!r) return;
+  openDialog(mode === 'change' ? `Change ${agentName(r.agent_id)}'s schedule` : `Decline ${agentName(r.agent_id)}'s request`, `<form>
+    <div class="dialog-error error hidden"></div>
+    <p class="small muted">Asked: ${esc(r.every)}${r.until ? ' until ' + esc(stamp(r.until)) : ''} (now ${esc(r.prev_every)}). ${esc(r.reason)}</p>
+    ${mode === 'change' ? `<label for="s-every">Run</label><input id="s-every" name="every" value="${esc(r.every)}" placeholder="every 2 hours, once a day, on demand">` : ''}
+    <label for="s-note">Note to the agent (optional)</label><input id="s-note" name="note">
+    <div class="actions"><button class="btn primary">${mode === 'change' ? 'Approve with this schedule' : 'Decline'}</button></div></form>`,
+  (f) => decideSchedule(id, mode === 'change' ? 'approve' : 'decline', f.every || '', f.note || ''));
 }
 
 // ---------- floor actions ----------
@@ -644,6 +733,10 @@ function agentDialog(a = {}) {
     </div>
     <p class="small muted">The platforms don't share their usage with outside apps, so these meters count the turns logged on the board and the tokens agents report when they clock out.</p>
     <label for="a-wake">"Wake now" scheduled task id (Claude only)</label><input id="a-wake" name="wake_trigger_id" value="${esc(a.wake_trigger_id || '')}" placeholder="trig_...">
+    <h3>Skills and profile</h3>
+    <p class="small muted">The Floor Manager routes work by these. Agents keep their own up to date; adjust anything here.</p>
+    ${skillChecks(a.skills || [])}
+    <label for="a-profile">Profile (strengths and limits)</label><textarea id="a-profile" name="profile" rows="2">${esc(a.profile || '')}</textarea>
     <label for="a-notes">Notes</label><textarea id="a-notes" name="notes" rows="2">${esc(a.notes || '')}</textarea>
     ${a.id ? `<label class="inline"><input type="checkbox" name="retired"${a.retired_at ? ' checked' : ''}> Retired (hide from the Floor; history stays)</label>` : ''}
     <div class="actions"><button class="btn primary" value="save">Save</button>${a.id ? '<button class="btn" value="rotate">Issue new key</button>' : ''}</div>
@@ -862,7 +955,7 @@ function messageDialog(to = '') {
 // ---------- events ----------
 
 document.addEventListener('click', async (ev) => {
-  const el = ev.target.closest('a[data-task], .card[data-task], [data-goto], [data-ping], [data-wake], [data-give], [data-edit-project], [data-new-assignment], [data-edit-assignment], [data-toggle-agent], [data-edit-agent], [data-correct-memory], [data-file], [data-file-history], [data-file-version], [data-file-restore], [data-file-delete], [data-undelete], [data-vault-edit], [data-vault-reveal], [data-vault-revoke], #new-task, #new-project, #new-agent, #new-memory, #new-message, #new-file, #upload-file, #new-cred, #run-sweep, #save-hours, #rotate-owner, #sign-out');
+  const el = ev.target.closest('a[data-task], .card[data-task], [data-goto], [data-ping], [data-wake], [data-give], [data-edit-project], [data-new-assignment], [data-edit-assignment], [data-toggle-agent], [data-edit-agent], [data-correct-memory], [data-file], [data-file-history], [data-file-version], [data-file-restore], [data-file-delete], [data-undelete], [data-vault-edit], [data-vault-reveal], [data-vault-revoke], [data-sched-approve], [data-sched-change], [data-sched-decline], #run-manager, #save-manager, #new-task, #new-project, #new-agent, #new-memory, #new-message, #new-file, #upload-file, #new-cred, #run-sweep, #save-hours, #rotate-owner, #sign-out');
   if (!el) return;
   const d = el.dataset;
   if (el.tagName === 'A') ev.preventDefault();
@@ -888,6 +981,15 @@ document.addEventListener('click', async (ev) => {
     return;
   }
   if (d.undelete) return act(() => api('file_restore', { file_id: Number(d.undelete) }), 'File restored.').catch(() => {});
+  if (d.schedApprove) return decideSchedule(Number(d.schedApprove), 'approve');
+  if (d.schedChange) return scheduleDialog(Number(d.schedChange), 'change');
+  if (d.schedDecline) return scheduleDialog(Number(d.schedDecline), 'decline');
+  if (el.id === 'run-manager') {
+    return act(() => api('run_manager')).then((r) => flash(`🧭 Floor Manager: ${r.routed} routed, ${r.rerouted} moved, ${r.schedule_suggestions} schedule suggestion${r.schedule_suggestions === 1 ? '' : 's'}.`)).catch(() => {});
+  }
+  if (el.id === 'save-manager') {
+    return act(() => api('save_manager', { auto_route: $('#mgr-route').checked, auto_effort: $('#mgr-effort').checked }), 'Floor Manager settings saved.').catch(() => {});
+  }
   if (d.vaultEdit) return credDialog(d.vaultEdit);
   if (d.vaultReveal) return revealCred(d.vaultReveal);
   if (d.vaultRevoke) {

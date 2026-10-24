@@ -55,3 +55,30 @@ The test agent's key was voided afterwards, its vault entry was revoked and wipe
 **Not yet exercised for real:**
 - Pressing Wake now, which would start a real Claude turn.
 - A real phone tap-through by Fernando.
+
+## Floor Manager (2026-10-24)
+
+**Database self-test** (`board._selftest_manager()`, everything rolled back afterwards):
+- **Routing:** a writing task went to the writer, a coding task to the coder, and explicitly chosen skills overrode the guessed ones.
+- **Effort:** a pile-up of 4 tasks made the Manager suggest "every 2 hours" for 3 days.
+- **Schedule requests:** request → approve with a changed schedule → the agent's briefing starts with "FIRST: change your own schedule" → confirmed → expired → told to switch back → confirmed.
+- **Refusals:** schedules faster than 15 minutes, requests without a reason, and edits to a stranger's profile.
+- **Self-correction:** pausing the coder moved its waiting task to the writer.
+- **Lockdown:** the old entry points can no longer be called from outside.
+
+**Live over HTTP** (edge function v3):
+- The connector lists `board_update_profile`, `board_request_schedule` and `board_confirm_schedule`.
+- A profile update through the connector keeps only known skills.
+- `POST /schedule-request` creates a pending request; "every 5 minutes" is refused with 400.
+- The Markdown briefing shows "Your skill profile" and "Your schedule".
+
+The test agent was switched off again afterwards.
+
+**Dashboard** (Playwright, mocked connector):
+- The Floor Manager panel lists requests and recent routing.
+- Approving Claude's request calls `update_trigger` with `49 */2 * * *`, then `schedule_applied`.
+- "Change…" approves with the edited schedule.
+- A new task defaults to "Let the Floor decide" with skill checkboxes, and its routing reason is flashed.
+- A task's dialog shows its routing reason and offers re-routing.
+- The Manager settings save.
+- Phone and desktop: no page errors and no sideways scroll.
