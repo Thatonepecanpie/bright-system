@@ -433,6 +433,7 @@ const Office = (() => {
     pop.innerHTML = `<div class="of-pop-head"><span class="of-dot" style="--c:${colorFor(a.id)}"></span><strong>${esc(a.display_name)}</strong>
         <span class="pill state-${st}">${esc(label)}</span><button class="of-x" data-office-close aria-label="Close">×</button></div>
       <div class="of-line">${doing(o)}</div>
+      ${a.skills && a.skills.length ? `<div class="of-line small muted">Skills: ${esc(a.skills.join(', '))}</div>` : ''}
       <div class="of-line"><span class="label">Last report</span>${a.last_summary ? esc(a.last_summary) + (a.last_summary_at ? ` <span class="muted small">· ${ago(a.last_summary_at)}</span>` : '') : '<span class="muted">No report yet</span>'}</div>
       ${meters.join('')}
       <div class="desk-actions">

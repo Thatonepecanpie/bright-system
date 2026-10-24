@@ -119,6 +119,10 @@ export async function handle(req, cfg) {
       if (!b && method === 'GET') return agentCall('list_credentials', {});
       if (b && (method === 'GET' || method === 'POST')) return agentCall('get_credential', { name: b, task_id: query.task_id || body.task_id || '' });
     }
+    if (a === 'schedule-request' && method === 'POST') {
+      return agentCall(b === 'done' ? 'confirm_schedule' : 'request_schedule', body);
+    }
+    if (a === 'profile' && method === 'POST') return agentCall('update_profile', body);
     if (a === 'mcp' && b) {
       if (method !== 'POST') return { status: 405, type: 'text/plain; charset=utf-8', body: 'This MCP endpoint takes JSON-RPC over POST.' };
       return handleMcp(req.body, b, cfg, headers);

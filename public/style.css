@@ -434,3 +434,12 @@ tr.cred-row td { background: var(--gate-bg); }
 @media (prefers-reduced-motion: reduce) { .office * { animation: none !important; } }
 
 .confetti { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 1000; }
+
+/* Floor Manager */
+.mgr h2 { margin: 0; }
+.mgr-req { display: flex; justify-content: space-between; align-items: center; gap: .5rem 1rem; flex-wrap: wrap; padding: .6rem 0; border-top: 1px solid var(--line); }
+.mgr-req:first-of-type { margin-top: .5rem; }
+.mgr-sub { margin-top: .6rem; }
+.mgr-log { margin: .25rem 0 0; padding-left: 1.1rem; font-size: .85rem; }
+.mgr-log li { margin: .15rem 0; overflow-wrap: anywhere; }
+.route-why { background: var(--panel-2); border-radius: 8px; padding: .45rem .65rem; margin: 0 0 .5rem; }

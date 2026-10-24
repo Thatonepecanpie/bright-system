@@ -13,6 +13,7 @@ function taskBlock(t) {
   if (t.flags && t.flags.length) meta.push(`flags: ${t.flags.join(', ')}`);
   if (t.lease_expires_at && t.status === 'in_progress') meta.push(`lease ends: ${when(t.lease_expires_at)}`);
   lines.push(meta.join(' · '));
+  if (t.assigned_to_you && t.route_reason) lines.push(t.route_reason);
   if (t.description) lines.push('', t.description);
   if (t.next_action) lines.push('', `Next action: ${t.next_action}`);
   if (t.depends_on_open && t.depends_on_open.length) lines.push(`Waiting on: ${t.depends_on_open.join(', ')}`);
@@ -71,6 +72,20 @@ export function briefingMarkdown(b, api, agentPage) {
     ? b.messages.map((m) => `- [${when(m.at)}] ${m.from} → ${m.to || 'everyone'} (${m.kind}${m.task ? ', ' + m.task : ''}${m.project ? ', ' + m.project : ''}): ${m.body}`).join('\n')
     : 'None.');
   if (b.more_unread_messages) out.push(`(${b.more_unread_messages} more; they will appear next briefing.)`);
+
+  if (b.profile) {
+    out.push('', '## Your skill profile');
+    out.push(`Skills: ${(b.profile.skills || []).join(', ') || 'none yet'} · Profile: ${b.profile.profile || 'empty'}`);
+    out.push(`Choose from: ${(b.profile.skills_vocab || []).join(', ')}. Update with POST ${api}/profile when it changes.`);
+  }
+  if (b.schedule) {
+    out.push('', '## Your schedule');
+    out.push(`The board expects you ${b.schedule.clock_in_every}.`);
+    for (const r of b.schedule.requests || []) {
+      out.push(`- Request #${r.id}: ${r.every}${r.until ? ' until ' + when(r.until) : ''} · ${r.status}${r.decision_note ? ' · ' + r.decision_note : ''}`);
+    }
+    out.push(`Need to run more or less often? POST ${api}/schedule-request {"every":"every 2 hours","reason":"...","until":"3 days"}`);
+  }
 
   out.push('', '## Vault entries granted to you');
   out.push((b.credentials_granted || []).length

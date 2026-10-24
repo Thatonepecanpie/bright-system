@@ -100,6 +100,32 @@
     }
   };
 
+  // "every 4 hours" -> a cron line for Claude's scheduled task (UTC); "on demand" -> paused.
+  function toCron(every) {
+    const t = String(every || '').toLowerCase();
+    if (/demand|manual/.test(t)) return null;
+    const n = Math.max(1, Math.round(parseFloat((t.match(/(\d+(\.\d+)?)/) || [])[1] || '1')));
+    const now = new Date();
+    if (/min/.test(t)) throw boardError("Claude's scheduled task can run at most once an hour.");
+    if (/hour|hr/.test(t)) return n >= 24 ? `49 ${now.getUTCHours()} * * *` : n === 1 ? '49 * * * *' : `49 */${n} * * *`;
+    if (/day|daily/.test(t)) return n === 1 ? `49 ${now.getUTCHours()} * * *` : `49 ${now.getUTCHours()} */${n} * *`;
+    if (/week/.test(t)) return `49 ${now.getUTCHours()} * * ${now.getUTCDay()}`;
+    throw boardError(`Can't turn "${every}" into a schedule.`);
+  }
+
+  window.BOARD_SCHEDULE = async function (triggerId, every) {
+    const mcp = await mcpReady;
+    if (!mcp) throw boardError('Connectors are not available in this view. Open the page on claude.ai.');
+    const cron = toCron(every);
+    const input = cron ? { trigger_id: triggerId, cron_expression: cron, enabled: true } : { trigger_id: triggerId, enabled: false };
+    try {
+      await mcp.callTool('Claude Code Remote', 'update_trigger', input, { cache: false });
+    } catch (e) {
+      if (e && e.code === 'server_not_connected') throw boardError('Allow the Claude Code Remote connector when claude.ai asks, then press Refresh.');
+      throw translate(e);
+    }
+  };
+
   // Saving a file from the File cabinet goes through claude.ai's download prompt.
   const downloadsReady = window.claude && window.claude.use ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
   window.BOARD_DOWNLOAD = async function (filename, data) {
