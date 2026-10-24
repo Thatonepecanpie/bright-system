@@ -203,7 +203,7 @@ const Office = (() => {
     }
     if (o.st === 'working') return goto(o, 'seat', seat(o), 'typing', 4000);
     // Several agents at the board or the door stand side by side along the wall, not on one spot.
-    const along = (spot) => ({ x: spot.x, y: spot.y + ((o.desk % 4) - 1.5) * 0.65 });
+    const along = (spot) => ({ x: spot.x, y: spot.y + ((o.desk % 4) - 1.5) * 0.9 });
     if (o.st === 'late') return goto(o, 'bulletin', along(SPOTS.bulletin), 'alert', 6000);
     if (o.st === 'paused') { const k = ['coffeeW', 'coffeeE', 'coffeeN'][o.desk % 3]; return goto(o, k, SPOTS[k], 'pause', 8000); }
     if (o.st === 'offline') return goto(o, 'door', along(SPOTS.door), 'q', 8000);
