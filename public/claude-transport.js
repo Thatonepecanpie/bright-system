@@ -85,13 +85,13 @@
   };
 
   // "Wake now" starts an agent's scheduled task through the viewer's Claude Code Remote connector.
-  window.BOARD_WAKE = async function (triggerId) {
+  window.BOARD_WAKE = async function (triggerId, text) {
     const mcp = await mcpReady;
     if (!mcp) throw boardError('Connectors are not available in this view. Open the page on claude.ai.');
     try {
       await mcp.callTool('Claude Code Remote', 'fire_trigger', {
         trigger_id: triggerId,
-        text: 'Fernando pressed "Wake now" on the Company Floor dashboard. Take your turn now.',
+        text: text || 'Fernando pressed "Wake now" on the Company Floor dashboard. Take your turn now.',
       }, { cache: false });
     } catch (e) {
       if (e && e.code === 'server_not_connected') throw boardError('Wake now needs the Claude Code Remote connector. Allow it when claude.ai asks, then try again.');

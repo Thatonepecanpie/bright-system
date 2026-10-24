@@ -443,3 +443,9 @@ tr.cred-row td { background: var(--gate-bg); }
 .mgr-log { margin: .25rem 0 0; padding-left: 1.1rem; font-size: .85rem; }
 .mgr-log li { margin: .15rem 0; overflow-wrap: anywhere; }
 .route-why { background: var(--panel-2); border-radius: 8px; padding: .45rem .65rem; margin: 0 0 .5rem; }
+
+/* Live ping replies */
+.ping-reply { border: 1px dashed var(--line); border-radius: 8px; padding: .6rem .75rem; margin: .5rem 0 .75rem; font-size: .92rem; }
+.ping-reply.got { border-style: solid; border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+.of-say { position: absolute; z-index: 4; max-width: min(260px, calc(100% - 12px)); background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; padding: .45rem .65rem; font-size: .85rem; box-shadow: 0 6px 18px rgba(0, 0, 0, .14); pointer-events: none; animation: of-pop .25s ease-out; }
+.of-say::after { content: ""; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px; background: var(--panel); border-right: 1px solid var(--accent); border-bottom: 1px solid var(--accent); transform: translateX(-50%) rotate(45deg); }
