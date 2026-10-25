@@ -26,6 +26,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Stamp the build so open dashboards can offer a one-tap update
+        run: |
+          v="${GITHUB_SHA::12}"
+          printf '{"version":"%s"}\n' "$v" > public/version.json
+          sed -i -E "s#(src|href)=\"(style\.css|config\.js|confetti\.js|office\.js|sprite-maker\.js|app\.js)\"#\1=\"\2?v=$v\"#g; s#<meta name=\"build\" content=\"[^\"]*\">#<meta name=\"build\" content=\"$v\">#" public/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public

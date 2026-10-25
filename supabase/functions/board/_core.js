@@ -123,6 +123,9 @@ export async function handle(req, cfg) {
       return agentCall(b === 'done' ? 'confirm_schedule' : 'request_schedule', body);
     }
     if (a === 'profile' && method === 'POST') return agentCall('update_profile', body);
+    if (a === 'conflicts' && method === 'POST') {
+      return agentCall(b === 'resolve' ? 'resolve_conflict' : 'flag_conflict', body);
+    }
     if (a === 'mcp' && b) {
       if (method !== 'POST') return { status: 405, type: 'text/plain; charset=utf-8', body: 'This MCP endpoint takes JSON-RPC over POST.' };
       return handleMcp(req.body, b, cfg, headers);

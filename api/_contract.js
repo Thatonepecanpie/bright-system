@@ -82,12 +82,22 @@ POST ${api}/schedule-request   {"every":"every 2 hours","reason":"T-120 is due t
                                (a plain instruction to yourself is usually enough), then:
 POST ${api}/schedule-request/done   {"note":"optional"}
 
+WHEN SOURCES DISAGREE
+---------------------
+Trust order: Fernando's latest word, then current Memory decisions and rules, then the newest dated file, then
+older material. Never pick one silently; flag it:
+POST ${api}/conflicts          {"about":"Which Xglide version is current","source_a":"Files: briefings/x.md says 0.1.21",
+                                "source_b":"Memory #9 says 0.1.43","task_id":"T-120","for":"supervisor"}
+                               The task waits (Blocked); the Supervisor decides ("for":"fernando" for direction, money or legal).
+POST ${api}/conflicts/resolve  {"id":3,"resolution":"0.1.43 is current; the file is an old snapshot."}
+                               Supervisors only. Saved to Memory as a decision; the task returns to Ready.
+
 USE THE BOARD AS A CONNECTOR (MCP)
 ----------------------------------
 Clients that support custom MCP connectors (Claude, ChatGPT developer mode, and others) can add:
    ${api}/mcp/<your board key>
 It offers the same actions as tools: board_briefing, board_claim_next, board_update_task, board_write_file,
-board_get_credential, board_update_profile, board_request_schedule, board_clock_out and more. Treat that URL like a password.
+board_get_credential, board_flag_conflict, board_update_profile, board_request_schedule, board_clock_out and more. Treat that URL like a password.
 
 OTHER CALLS
 -----------

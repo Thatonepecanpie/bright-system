@@ -277,7 +277,14 @@ const agentName = (id) => (state.snap.agents.find((a) => a.id === id) || {}).dis
 const visibleTasks = () => state.snap.tasks.filter((t) => !state.project || t.project === state.project);
 const hint = (text) => `<p class="hint">${text}</p>`;
 const pendingRequests = () => (state.snap.schedule_requests || []).filter((r) => r.status === 'pending');
-const needsMe = () => state.snap.tasks.filter((t) => t.status === 'needs_fernando').length + pendingRequests().length;
+const openConflicts = () => (state.snap.conflicts || []).filter((c) => c.status === 'open');
+const needsMe = () => state.snap.tasks.filter((t) => t.status === 'needs_fernando').length + pendingRequests().length
+  + openConflicts().filter((c) => c.decide === 'fernando').length;
+const avatarOf = (id) => (state.snap.avatars || {})[id] || '';
+// An agent's face: its custom sprite picture if it has one, else the drawn bot.
+const face = (a, st, size = '') => (avatarOf(a.id)
+  ? `<span class="face ${size} st-${st}" style="--c:${colorFor(a.id)}"><img src="${avatarOf(a.id)}" alt="${esc(a.display_name)}"></span>`
+  : sprite(a, st, size));
 const skillsVocab = () => (state.snap.manager && state.snap.manager.skills_vocab) || [];
 const skillChecks = (selected = []) => `<div class="checks">${skillsVocab().map((k) => `<label class="inline"><input type="checkbox" name="skills" data-group="skills" value="${k}"${selected.includes(k) ? ' checked' : ''}> ${k}</label>`).join('')}</div>`;
 
@@ -294,6 +301,39 @@ function managerPanel() {
   const log = routed.map((e) => `<li>${ago(e.at)} · <a href="#" data-task="${e.task_id}">T-${e.task_id}</a> → <strong>${esc(agentName(e.detail.to))}</strong>${e.detail.from && e.detail.from !== e.detail.to ? ` <span class="muted">(was ${esc(agentName(e.detail.from))})</span>` : ''} <span class="muted">· ${esc((e.detail.why || []).join(', '))}</span></li>`).join('');
   return `<section class="panel mgr"><div class="row-head"><h2>🧭 Floor Manager</h2><button class="btn small" id="run-manager">Run now</button></div>
     ${cards}${log ? `<div class="small muted mgr-sub">Recent routing</div><ul class="mgr-log">${log}</ul>` : ''}</section>`;
+}
+
+// Sources that disagree, waiting for a decision. Fernando can decide any of them; the ones marked for
+// him also count in "need you".
+function conflictsPanel() {
+  const open = openConflicts();
+  if (!open.length) return '';
+  const cards = open.map((c) => `<div class="conflict">
+      <div class="conflict-head"><strong>⚖️ #${c.id} ${esc(c.about)}</strong>
+        <span class="small muted">${esc(c.project || 'board-wide')}${c.task_id ? ` · <a href="#" data-task="${c.task_id}">T-${c.task_id}</a> waits` : ''} · raised by ${esc(agentName(c.raised_by))} ${ago(c.created_at)}</span></div>
+      <div class="conflict-sides"><div><span class="label">Source A</span>${esc(c.source_a)}</div><div><span class="label">Source B</span>${esc(c.source_b)}</div></div>
+      <div class="actions" style="margin:0"><span class="small muted">${c.decide === 'fernando' ? 'Your call' : `${esc(agentName((state.snap.projects.find((p) => p.slug === c.project) || {}).supervisor || 'supervisor'))} (Supervisor) decides; you can too`}</span>
+        <button class="btn small primary" data-conflict="${c.id}">Decide…</button></div>
+    </div>`).join('');
+  return `<section class="panel conflicts"><h2>Sources that disagree <span class="badge">${open.length}</span></h2>${cards}</section>`;
+}
+
+function conflictDialog(id) {
+  const c = openConflicts().find((x) => x.id === id);
+  if (!c) return flash('That conflict was already decided.', 'error');
+  openDialog(`Decide conflict #${c.id}`, `<form>
+    <div class="dialog-error error hidden"></div>
+    <p><strong>${esc(c.about)}</strong></p>
+    <div class="conflict-sides"><div><span class="label">Source A</span>${esc(c.source_a)}</div><div><span class="label">Source B</span>${esc(c.source_b)}</div></div>
+    <div class="actions"><button class="btn small" type="button" data-pick="A is right: ${esc(c.source_a)}">A is right</button><button class="btn small" type="button" data-pick="B is right: ${esc(c.source_b)}">B is right</button></div>
+    <label for="cf-res">Decision (saved to Memory so nobody asks again)</label>
+    <textarea id="cf-res" name="resolution" rows="3" required placeholder="Which one is right, and what everyone should do from now on."></textarea>
+    <label for="cf-sup">Replaces memory entry # (optional)</label><input id="cf-sup" name="supersedes" inputmode="numeric" placeholder="e.g. 12">
+    <div class="actions"><button class="btn primary">Decide</button></div>
+  </form>`, async (f) => {
+    await act(() => api('resolve_conflict', { id: c.id, resolution: f.resolution, supersedes: f.supersedes }), `Conflict #${c.id} decided and saved to Memory.`);
+  });
+  for (const b of document.querySelectorAll('#dialog [data-pick]')) b.addEventListener('click', () => { $('#cf-res').value = b.dataset.pick; $('#cf-res').focus(); });
 }
 
 function agentState(a) {
@@ -361,10 +401,10 @@ function viewFloor() {
     const [st, label] = agentState(a);
     const what = a.active_task ? `${a.active_task.ref} · ${a.active_task.title}` : a.last_summary || 'No report yet';
     return `<button class="team-row" data-office-select="${esc(a.id)}" style="--c:${colorFor(a.id)}">
-      <span class="of-dot"></span><span class="team-text"><span class="who">${esc(a.display_name)}</span> <span class="pill state-${st}">${esc(label)}</span>
+      ${avatarOf(a.id) ? `<span class="face tiny"><img src="${avatarOf(a.id)}" alt=""></span>` : '<span class="of-dot"></span>'}<span class="team-text"><span class="who">${esc(a.display_name)}</span> <span class="pill state-${st}">${esc(label)}</span>
       <span class="what">${esc(what)}</span></span></button>`;
   }).join('');
-  return `${hint('Click an agent for details, right-click (or long-press) for options, drag to move it. Drop one on the bulletin board to give it a task. The bulletin board, mailbox, cabinet, safe and trophy shelf are shortcuts to their tabs.')}
+  return `${hint('Click an agent for details, right-click (or long-press) for options, drag to move it. Drop one on the bulletin board to give it a task. The bulletin board, mailbox, cabinet, safe, trophy shelf, whiteboard and server rack open their tabs.')}
     <div class="summary-row">
       <span class="chip"><strong>${working}</strong> working</span>
       <span class="chip"><strong>${agents.length - working}</strong> between turns or paused</span>
@@ -388,6 +428,7 @@ function viewBoard() {
   }).join('');
   return `${hint('Every task and where it stands. Leave "Assign to" on "Let the Floor decide" and the Floor Manager gives it to the best-suited free agent, with its reasons. Tap a card to edit, approve or reassign it.')}
     <div class="actions" style="margin:0 0 .75rem"><button class="btn primary" id="new-task">+ New task</button></div>
+    ${conflictsPanel()}
     ${managerPanel()}
     <div class="board">${cols}</div>`;
 }
@@ -412,6 +453,7 @@ function viewFiles() {
       <select id="folder-filter" aria-label="Folder" style="width:auto">${options(folders, state.folder)}</select>
       <button class="btn primary" id="new-file">+ New file</button>
       <button class="btn" id="upload-file">Upload</button>
+      <button class="btn" id="brief-floor">🧠 Brief the Floor</button>
       <input type="file" id="upload-input" class="hidden">
       <label class="inline"><input type="checkbox" id="show-trash"${state.showTrash ? ' checked' : ''}> Show trash</label>
     </div>
@@ -438,28 +480,44 @@ function viewVault() {
       <tbody>${rows || '<tr><td colspan="5" class="muted">The vault is empty.</td></tr>'}</tbody></table></div></div>`;
 }
 
+const trophySvg = (c) => `<svg viewBox="0 0 40 48" class="trophy-svg" style="--c:${c}" aria-hidden="true">
+  <path class="handle" d="M11 9H6.5a5 5 0 0 0 5.5 8M29 9h4.5a5 5 0 0 1-5.5 8"/>
+  <path class="cup" d="M10 5h20v10a10 10 0 0 1-20 0z"/><path class="shine" d="M14.5 8.5v6a5.5 5.5 0 0 0 2.5 4.6"/>
+  <rect class="stem" x="18" y="24.5" width="4" height="7"/><rect class="base" x="12.5" y="31" width="15" height="4" rx="1.4"/>
+  <rect class="plinth" x="9" y="35" width="22" height="8" rx="2"/></svg>`;
+const medalSvg = () => `<svg viewBox="0 0 40 48" class="trophy-svg medal" aria-hidden="true">
+  <path class="ribbon" d="M12 2h7l3 14h-7zM28 2h-7l-3 14h7z"/><circle class="disc" cx="20" cy="29" r="12"/>
+  <path class="star" d="M20 21.5l2.3 4.7 5.2.8-3.8 3.6.9 5.2-4.6-2.4-4.6 2.4.9-5.2-3.8-3.6 5.2-.8z"/></svg>`;
+const weekOf = (ts) => { const d = new Date(ts); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
+
+// Wins as a trophy shelf: one shelf per week, a trophy in the agent's colour for each finished task and a
+// gold medal for each achievement. Trophies earned since your last look drop in.
 function viewWins() {
   const w = state.snap.wins;
+  const seen = Date.parse(recall('wins_seen') || '') || 0;
+  remember('wins_seen', new Date().toISOString());
   const board = liveAgents().slice().sort((a, b) => b.tasks_done - a.tasks_done).map((a) => {
     const ach = w.achievements.filter((m) => m.author === a.id).length;
-    return `<div class="win-agent" style="--c:${colorFor(a.id)}">${sprite(a, 'idle', 'mini')}<div><strong>${esc(a.display_name)}</strong>
-      <div class="small muted">${a.tasks_done} task${a.tasks_done === 1 ? '' : 's'} done · ${ach} achievement${ach === 1 ? '' : 's'}</div></div></div>`;
+    return `<div class="win-agent" style="--c:${colorFor(a.id)}">${face(a, 'idle', 'mini')}<div><strong>${esc(a.display_name)}</strong>
+      <div class="small muted">🏆 ${a.tasks_done} · 🏅 ${ach}</div></div></div>`;
   }).join('');
   const items = [
-    ...w.tasks.map((t) => ({ at: t.done_at, html: `<span class="pill ok">done</span> <a href="#" data-task="${t.id}">${esc(t.ref)} · ${esc(t.title)}</a>
-      <div class="small muted">${esc(agentName(t.owner || 'fernando'))} · ${esc(t.project)}${t.evidence ? ' · ' + esc(t.evidence).slice(0, 140) : ''}</div>` })),
-    ...w.achievements.map((m) => ({ at: m.created_at, html: `<span class="pill gate">achievement</span> ${esc(m.body)}<div class="small muted">${esc(agentName(m.author))}</div>` })),
+    ...w.tasks.map((t) => ({ at: t.done_at, html: `<button class="trophy${Date.parse(t.done_at) > seen && seen ? ' fresh' : ''}" data-task="${t.id}" title="${esc(t.ref)} · ${esc(t.title)} (${esc(agentName(t.owner || 'fernando'))})">
+        ${trophySvg(colorFor(t.owner || 'fernando'))}<span class="plate">${esc(t.ref)}</span></button>` })),
+    ...w.achievements.map((m) => ({ at: m.created_at, html: `<button class="trophy${Date.parse(m.created_at) > seen && seen ? ' fresh' : ''}" data-achievement="${m.id}" title="${esc(agentName(m.author))}: ${esc(m.body)}">
+        ${medalSvg()}<span class="plate">${esc(agentName(m.author))}</span></button>` })),
   ].sort((a, b) => new Date(b.at) - new Date(a.at));
-  let lastDay = '';
-  const timeline = items.map((i) => {
-    const d = day(i.at);
-    const head = d !== lastDay ? `<h3 class="day">${esc(d)}</h3>` : '';
-    lastDay = d;
-    return `${head}<div class="list-item">${i.html}</div>`;
-  }).join('');
-  return `${hint('Finished work and milestones from the last 90 days.')}
+  const weeks = [];
+  for (const i of items) {
+    const k = weekOf(i.at).getTime();
+    if (!weeks.length || weeks[weeks.length - 1].k !== k) weeks.push({ k, items: [] });
+    weeks[weeks.length - 1].items.push(i);
+  }
+  const shelves = weeks.map((wk, n) => `<div class="shelf-row"><div class="shelf-label">${n === 0 && wk.k === weekOf(Date.now()).getTime() ? 'This week' : 'Week of ' + esc(new Date(wk.k).toLocaleDateString([], { month: 'short', day: 'numeric' }))} · ${wk.items.length}</div>
+      <div class="shelf">${wk.items.map((i) => i.html).join('')}</div></div>`).join('');
+  return `${hint('The trophy shelf: a trophy for every finished task, in the colour of the agent who did it, and a medal for every achievement (last 90 days). Tap one for the details.')}
     <div class="wins-agents">${board}</div>
-    <div class="panel">${timeline || '<div class="empty">No wins yet. Finished tasks and "achievement" messages show up here.</div>'}</div>`;
+    <div class="panel cabinet">${shelves || '<div class="empty">The shelf is empty for now. Finished tasks and "achievement" messages show up here.</div>'}</div>`;
 }
 
 function viewProjects() {
@@ -483,7 +541,9 @@ function viewProjects() {
 }
 
 function viewMemory() {
-  const list = state.snap.memory.filter((m) => (!state.project || m.project === state.project) && (state.showSuperseded || !m.superseded_by));
+  const archived = new Set(state.snap.projects.filter((p) => p.status === 'archived').map((p) => p.slug));
+  const list = state.snap.memory.filter((m) => (!state.project || m.project === state.project) && (state.showSuperseded || !m.superseded_by)
+    && (!archived.has(m.project) || state.project === m.project));
   const items = list.map((m) => `<div class="list-item${m.superseded_by ? ' superseded' : ''}">
     <div class="small muted">#${m.id} · <span class="pill">${esc(m.kind)}</span> · ${esc(m.project || 'all projects')} · ${esc(agentName(m.author))} · ${stamp(m.created_at)}
       ${m.source_task_id ? ` · from T-${m.source_task_id}` : ''}${m.supersedes ? ` · replaces #${m.supersedes}` : ''}${m.superseded_by ? ` · <strong>superseded by #${m.superseded_by}</strong>` : ''}</div>
@@ -499,16 +559,54 @@ function viewMemory() {
     <div class="panel">${items || '<div class="empty">No memory yet.</div>'}</div>`;
 }
 
+// A "quiet check-in" is the summary an agent posts when it clocks out of a turn in which it did nothing
+// else (no claim, task change, file or other message). They are folded so real updates stand out.
+function quietCheckins() {
+  const ev = state.snap.events; // newest first
+  const quiet = new Set();
+  ev.forEach((o, i) => {
+    if (o.action !== 'clock_out') return;
+    // The summary is the broadcast message logged in the same instant as the clock-out.
+    const summary = ev.filter((e) => e.actor === o.actor && e.action === 'message' && e.at === o.at);
+    if (summary.length !== 1 || !summary[0].detail || summary[0].detail.to) return;
+    for (let j = i + 1; j < ev.length; j++) {
+      const e = ev[j];
+      if (e.actor !== o.actor || e === summary[0]) continue;
+      if (e.action === 'clock_in') break;
+      return; // the agent did something else this turn
+    }
+    quiet.add(Number(summary[0].detail.message_id));
+  });
+  return quiet;
+}
+
 function viewMessages() {
   const list = state.snap.messages.filter((m) => !state.project || m.project === state.project);
-  const items = list.map((m) => `<div class="list-item${m.to_agent === 'fernando' ? ' to-me' : ''}">
+  const quiet = state.showQuiet ? new Set() : quietCheckins();
+  const row = (m) => `<div class="list-item${m.to_agent === 'fernando' ? ' to-me' : ''}">
     <div class="small muted">${stamp(m.created_at)} · <strong>${esc(agentName(m.author))}</strong> → ${esc(m.to_agent ? agentName(m.to_agent) : 'everyone')} · <span class="pill">${esc(m.kind)}</span>
       ${m.project ? ' · ' + esc(m.project) : ''}${m.task_id ? ` · <a href="#" data-task="${m.task_id}">T-${m.task_id}</a>` : ''}</div>
     <div>${esc(m.body)}</div>
-  </div>`).join('');
-  return `${hint('Short notes between turns. Messages to you are marked on the left.')}
-    <div class="actions" style="margin:0 0 .75rem"><button class="btn primary" id="new-message">+ Post message</button></div>
-    <div class="panel">${items || '<div class="empty">No messages yet.</div>'}</div>`;
+  </div>`;
+  const out = [];
+  let run = [];
+  const flush = () => {
+    if (!run.length) return;
+    const who = [...new Set(run.map((m) => agentName(m.author)))].join(', ');
+    out.push(`<button class="list-item quiet-run" data-show-quiet>💤 ${run.length} quiet check-in${run.length === 1 ? '' : 's'} <span class="muted">· ${esc(who)} found nothing to do · show</span></button>`);
+    run = [];
+  };
+  for (const m of list) {
+    if (quiet.has(m.id)) { run.push(m); continue; }
+    flush();
+    out.push(row(m));
+  }
+  flush();
+  const n = state.showQuiet ? quietCheckins().size : quiet.size;
+  return `${hint('Short notes between turns. Messages to you are marked on the left. Check-ins where an agent found nothing to do are folded.')}
+    <div class="actions" style="margin:0 0 .75rem"><button class="btn primary" id="new-message">+ Post message</button>
+      ${n ? `<label class="inline"><input type="checkbox" id="show-quiet"${state.showQuiet ? ' checked' : ''}> Show quiet check-ins (${n})</label>` : ''}</div>
+    <div class="panel">${out.join('') || '<div class="empty">No messages yet.</div>'}</div>`;
 }
 
 function viewActivity() {
@@ -730,7 +828,7 @@ async function pingAgent(id) {
       how += ` <button class="btn small" type="button" data-copy-ping>Copy a message to send it yourself</button>`;
     }
     state.live = { agent: s.id, until: Date.now() + LIVE_MS };
-    openDialog(`${s.display_name}: status`, `<div class="ping-head" style="--c:${colorFor(s.id)}">${sprite(s, st)}<div>
+    openDialog(`${s.display_name}: status`, `<div class="ping-head" style="--c:${colorFor(s.id)}">${face(s, st)}<div>
         <span class="pill state-${st}">${esc(label)}</span>
         <p class="small">Seen ${ago(s.last_seen_at)} · clocks in ${esc(s.clock_in_every)} · ${s.turns_in_window} turn${s.turns_in_window === 1 ? '' : 's'} in the last ${s.usage_window_hours}h</p></div></div>
       <div class="success small">${how}</div>
@@ -776,6 +874,7 @@ function agentDialog(a = {}) {
     </div>
     <p class="small muted">The platforms don't share their usage with outside apps, so these meters count the turns logged on the board and the tokens agents report when they clock out.</p>
     <label for="a-wake">"Wake now" scheduled task id (Claude only)</label><input id="a-wake" name="wake_trigger_id" value="${esc(a.wake_trigger_id || '')}" placeholder="trig_...">
+    ${a.id ? `<h3>Sprite</h3><div class="sprite-row">${face(a, 'idle', 'mini')}<button class="btn small" type="button" data-sprite="${esc(a.id)}">Customize sprite…</button></div>` : ''}
     <h3>Skills and profile</h3>
     <p class="small muted">The Floor Manager routes work by these. Agents keep their own up to date; adjust anything here.</p>
     ${skillChecks(a.skills || [])}
@@ -866,7 +965,8 @@ async function handleUpload(file) {
     r.onload = () => resolve(asText ? r.result : String(r.result).split(',')[1] || '');
     if (asText) r.readAsText(file); else r.readAsDataURL(file);
   });
-  const target = uploadTarget || { project: state.folder || 'shared', path: file.name.replace(/[^A-Za-z0-9._ ()/-]/g, '-') };
+  const target = uploadTarget && uploadTarget.path ? uploadTarget
+    : { project: (uploadTarget && uploadTarget.project) || state.folder || 'shared', path: file.name.replace(/[^A-Za-z0-9._ ()/-]/g, '-') };
   try {
     await act(() => api('file_write', { ...target, content, encoding: asText ? 'utf8' : 'base64', mime: file.type || '', note: `Uploaded ${file.name}` }),
       `${target.path} uploaded.`);
@@ -995,10 +1095,53 @@ function messageDialog(to = '') {
   });
 }
 
+// ---------- "Brief the Floor": bring knowledge in from any AI chat ----------
+
+const briefPrompt = (topic) => `I'm adding what you know to my Company Floor, a shared board where my AI assistants (Claude, ChatGPT, Gemini, Muse) work together. Write a complete handover about ${topic || '[TOPIC]'} that another AI could pick up without asking me anything. Include:
+1. What it is and its goal.
+2. Current status and latest version, with dates.
+3. What is done.
+4. What is broken, risky or unresolved.
+5. Decisions made, and why.
+6. Next steps, in order.
+7. Where things live (links, file and folder names, which accounts: names only, never passwords).
+8. Anything you are unsure about, clearly marked "unverified".
+Do not include passwords, one-time codes, card or account numbers. Reply with one Markdown file named ${(topic || 'topic').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'topic'}-handover.md.`;
+
+function briefDialog() {
+  openDialog('🧠 Brief the Floor', `<p class="small">Any AI chat that knows something (your Xglide chat, a ChatGPT conversation, Muse) can brief the whole team:</p>
+    <ol class="small"><li>Name the topic, then copy the prompt.</li><li>Paste it into that chat and save its answer as a <code>.md</code> file.</li><li>Upload the file here. Then mention it in a task or a message so an agent reads it.</li></ol>
+    <label for="bf-topic">Topic</label><input id="bf-topic" placeholder="e.g. Xglide, from version 0.1.21 to today">
+    <textarea id="bf-prompt" rows="10" readonly></textarea>
+    <div class="actions"><button class="btn primary" type="button" id="bf-copy">Copy prompt</button><button class="btn" type="button" id="bf-upload">Upload the answer…</button></div>`);
+  const fill = () => { $('#bf-prompt').value = briefPrompt($('#bf-topic').value.trim()); };
+  fill();
+  $('#bf-topic').addEventListener('input', fill);
+  $('#bf-copy').addEventListener('click', () => copyText($('#bf-prompt').value, $('#bf-copy')));
+  $('#bf-upload').addEventListener('click', () => { $('#dialog').close(); pickUpload({ project: 'shared', path: '' }); });
+}
+
+// ---------- "New version available" (website only) ----------
+// The Pages build stamps index.html with <meta name="build"> and writes version.json; when they differ
+// the page offers a one-tap update. The claude.ai copy is refreshed by reopening it, so this is skipped there.
+
+async function checkVersion() {
+  const mine = (document.querySelector('meta[name="build"]') || {}).content;
+  if (!mine || mine === 'dev' || window.BOARD_TRANSPORT || !/^https?:/.test(location.protocol)) return;
+  try {
+    const r = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!r.ok) return;
+    const { version } = await r.json();
+    if (version && version !== mine && !$('#update-banner')) {
+      document.body.insertAdjacentHTML('beforeend', `<div id="update-banner" class="update-banner" role="status">✨ A new version of Company Floor is ready. <button class="btn small primary" id="update-now">Update</button></div>`);
+    }
+  } catch { /* offline: try again later */ }
+}
+
 // ---------- events ----------
 
 document.addEventListener('click', async (ev) => {
-  const el = ev.target.closest('a[data-task], .card[data-task], [data-goto], [data-ping], [data-wake], [data-give], [data-edit-project], [data-new-assignment], [data-edit-assignment], [data-toggle-agent], [data-edit-agent], [data-correct-memory], [data-file], [data-file-history], [data-file-version], [data-file-restore], [data-file-delete], [data-undelete], [data-vault-edit], [data-vault-reveal], [data-vault-revoke], [data-copy-ping], [data-sched-approve], [data-sched-change], [data-sched-decline], #run-manager, #save-manager, #new-task, #new-project, #new-agent, #new-memory, #new-message, #new-file, #upload-file, #new-cred, #run-sweep, #save-hours, #rotate-owner, #sign-out');
+  const el = ev.target.closest('a[data-task], .card[data-task], [data-goto], [data-ping], [data-wake], [data-give], [data-edit-project], [data-new-assignment], [data-edit-assignment], [data-toggle-agent], [data-edit-agent], [data-correct-memory], [data-file], [data-file-history], [data-file-version], [data-file-restore], [data-file-delete], [data-undelete], [data-vault-edit], [data-vault-reveal], [data-vault-revoke], [data-copy-ping], [data-conflict], [data-achievement], [data-show-quiet], [data-sprite], [data-sched-approve], [data-sched-change], [data-sched-decline], #run-manager, #save-manager, #brief-floor, #update-now, #new-task, #new-project, #new-agent, #new-memory, #new-message, #new-file, #upload-file, #new-cred, #run-sweep, #save-hours, #rotate-owner, #sign-out');
   if (!el) return;
   const d = el.dataset;
   if (el.tagName === 'A') ev.preventDefault();
@@ -1025,6 +1168,20 @@ document.addEventListener('click', async (ev) => {
   }
   if (d.undelete) return act(() => api('file_restore', { file_id: Number(d.undelete) }), 'File restored.').catch(() => {});
   if (el.matches('[data-copy-ping]')) return copyText(PING_MESSAGE, el);
+  if (d.conflict) return conflictDialog(Number(d.conflict));
+  if (d.achievement) {
+    const m = state.snap.wins.achievements.find((x) => String(x.id) === d.achievement);
+    if (m) openDialog('🏅 Achievement', `<p>${esc(m.body)}</p><p class="small muted">${esc(agentName(m.author))} · ${stamp(m.created_at)}</p>`);
+    return;
+  }
+  if (el.matches('[data-show-quiet]')) { state.showQuiet = true; return render(); }
+  if (d.sprite) {
+    if (typeof SpriteMaker === 'undefined') return;
+    const a = state.snap.agents.find((x) => x.id === d.sprite);
+    return SpriteMaker.open(a, colorFor(a.id), avatarOf(a.id), (image) => act(() => api('save_avatar', { agent: a.id, image }), image ? `${a.display_name} has a new look.` : `${a.display_name} is back to the classic sprite.`));
+  }
+  if (el.id === 'brief-floor') return briefDialog();
+  if (el.id === 'update-now') return location.reload();
   if (d.schedApprove) return decideSchedule(Number(d.schedApprove), 'approve');
   if (d.schedChange) return scheduleDialog(Number(d.schedChange), 'change');
   if (d.schedDecline) return scheduleDialog(Number(d.schedDecline), 'decline');
@@ -1082,6 +1239,7 @@ document.addEventListener('submit', (ev) => {
 document.addEventListener('change', (ev) => {
   const id = ev.target.id;
   if (id === 'show-superseded') { state.showSuperseded = ev.target.checked; render(); }
+  if (id === 'show-quiet') { state.showQuiet = ev.target.checked; render(); }
   if (id === 'show-trash') { state.showTrash = ev.target.checked; render(); }
   if (id === 'show-revoked') { state.showRevoked = ev.target.checked; render(); }
   if (id === 'folder-filter') { state.folder = ev.target.value; remember('board_folder', state.folder); render(); }
@@ -1126,4 +1284,6 @@ if (token()) {
 }
 setInterval(() => { if (document.visibilityState === 'visible' && token() && !$('#dialog').open && !$('#ask').open) load(true); }, 60000);
 setInterval(() => { if (state.live && Date.now() < state.live.until && document.visibilityState === 'visible' && token()) load(true); }, 5000);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && token()) load(true); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && token()) { load(true); checkVersion(); } });
+setInterval(checkVersion, 5 * 60e3);
+checkVersion();

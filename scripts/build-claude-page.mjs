@@ -27,6 +27,9 @@ ${noClose(read('public/confetti.js'))}
 ${noClose(read('public/office.js'))}
 </script>
 <script>
+${noClose(read('public/sprite-maker.js'))}
+</script>
+<script>
 ${noClose(read('public/app.js'))}
 </script>
 `;
