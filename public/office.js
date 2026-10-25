@@ -4,7 +4,9 @@
 // coffee break when paused, and by the door until it first connects. A fresh message makes its
 // author walk over to the recipient. Click an agent for details, right-click (or long-press) for
 // actions, drag it anywhere; drop it on the bulletin board to give it a task. The bulletin board,
-// mailbox, file cabinet, safe and trophy shelf are shortcuts to their tabs.
+// mailbox, file cabinet, safe, trophy shelf, memory whiteboard and server rack are shortcuts to their
+// tabs. The windows follow the real sky (dawn, day, dusk, night) and desk lamps come on after dark.
+// An agent can wear a custom picture (Settings → Sprite) in place of its face.
 // Uses app.js globals at call time: state, agentState, colorFor, esc, ago, until, meter, fmtNum,
 // newTask, messageDialog.
 'use strict';
@@ -48,13 +50,15 @@ const Office = (() => {
     bulletin: { x: 0.95, y: 3.75 }, water: { x: 1.55, y: 6.35 },
     coffeeN: { x: 9.4, y: 8.15 }, coffeeW: { x: 8.05, y: 9.25 }, coffeeE: { x: 10.75, y: 9.25 },
     window1: { x: 4.0, y: 0.9 }, window2: { x: 7.6, y: 0.9 }, plant: { x: 12.7, y: 10.0 }, door: { x: 0.95, y: 9.6 },
+    shelf: { x: 1.75, y: 1.0 }, whiteboard: { x: 0.95, y: 1.7 }, rack: { x: 9.5, y: 1.15 },
   };
-  const IDLE = ['seat', 'seat', 'water', 'coffeeN', 'coffeeW', 'coffeeE', 'window1', 'window2', 'bulletin', 'plant'];
-  const ICON = { seat: 'zz', water: 'drop', coffeeN: 'cup', coffeeW: 'cup', coffeeE: 'cup', window1: 'sun', window2: 'sun', bulletin: 'board', plant: 'leaf' };
+  const IDLE = ['seat', 'seat', 'water', 'coffeeN', 'coffeeW', 'coffeeE', 'window1', 'window2', 'bulletin', 'plant', 'shelf', 'whiteboard', 'rack'];
+  const ICON = { seat: 'zz', water: 'drop', coffeeN: 'cup', coffeeW: 'cup', coffeeE: 'cup', window1: 'sun', window2: 'sun', bulletin: 'board', plant: 'leaf', shelf: 'party', whiteboard: 'board', rack: 'q' };
   const DOING = {
     seat: 'resting at its desk', water: 'at the water cooler', coffeeN: 'on a coffee break', coffeeW: 'on a coffee break',
     coffeeE: 'on a coffee break', window1: 'looking out the window', window2: 'looking out the window',
     bulletin: 'reading the bulletin board', plant: 'watering the plants', msg: 'dropping off a message',
+    shelf: 'admiring the trophy shelf', whiteboard: 'reading the memory board', rack: 'checking the server rack',
     held: 'where you put it', door: 'waiting by the door',
   };
   const BUBBLE = {
@@ -89,25 +93,50 @@ const Office = (() => {
 
   // ---------- scene ----------
 
+  // Sky colours by local hour: [from hour, top, bottom, orb].
+  const SKY = [[0, '#0d1834', '#22355f', 'moon'], [6, '#f2a07c', '#ffdcae', 'sun'], [8, '#5ea9f5', '#cfe7ff', 'sun'],
+    [17, '#ee8758', '#ffc184', 'sun'], [19, '#373c78', '#7b68a6', 'moon'], [21, '#0d1834', '#22355f', 'moon']];
+  const at = (x, y, z) => P(x, y, z).map((n) => n.toFixed(1));
+
   function walls() {
-    let s = poly('of-floor', [[0, 0, 0], [W, 0, 0], [W, D, 0], [0, D, 0]]);
-    let grid = '';
-    for (let i = 1; i < W; i++) grid += line('', [i, 0, 0], [i, D, 0]);
-    for (let j = 1; j < D; j++) grid += line('', [0, j, 0], [W, j, 0]);
-    s += `<g class="of-grid">${grid}</g>`;
-    s += poly('of-rug', [[7.7, 7.95, 0], [11.5, 7.95, 0], [11.5, 10.6, 0], [7.7, 10.6, 0]]);
+    let s = `<defs><linearGradient id="of-sky" x1="0" y1="0" x2="0" y2="1"><stop class="sky-a" offset="0"/><stop class="sky-b" offset="1"/></linearGradient>
+      <radialGradient id="of-lamp"><stop offset="0" stop-color="#ffd27a" stop-opacity=".6"/><stop offset="1" stop-color="#ffd27a" stop-opacity="0"/></radialGradient></defs>`;
+    s += poly('of-floor', [[0, 0, 0], [W, 0, 0], [W, D, 0], [0, D, 0]]);
+    // Wooden planks running along the room, with staggered joints.
+    let planks = '';
+    for (let j = 0.55, k = 0; j < D; j += 0.55, k++) {
+      planks += line('', [0, j, 0], [W, j, 0]);
+      for (let i = k % 2 ? 1.3 : 2.7; i < W; i += 2.8) planks += line('j', [i, j - 0.55, 0], [i, j, 0]);
+    }
+    s += `<g class="of-planks">${planks}</g>`;
+    s += poly('of-rug', [[7.7, 7.95, 0], [11.5, 7.95, 0], [11.5, 10.6, 0], [7.7, 10.6, 0]])
+      + poly('of-rug-in', [[7.95, 8.2, 0], [11.25, 8.2, 0], [11.25, 10.35, 0], [7.95, 10.35, 0]]);
     s += poly('of-wall-l', [[0, 0, 0], [0, D, 0], [0, D, WALL], [0, 0, WALL]]);
     s += poly('of-wall-r', [[0, 0, 0], [W, 0, 0], [W, 0, WALL], [0, 0, WALL]]);
+    s += leftWall('of-wains l', 0, D, 0, 0.85) + rightWall('of-wains r', 0, W, 0, 0.85);
+    s += line('of-rail', [0.02, 0, 0.85], [0.02, D, 0.85]) + line('of-rail', [0, 0.02, 0.85], [W, 0.02, 0.85]);
     s += poly('of-wall-cap', [[0, 0, WALL], [0, D, WALL], [-0.16, D, WALL], [-0.16, -0.16, WALL]]);
     s += poly('of-wall-cap', [[0, 0, WALL], [W, 0, WALL], [W, -0.16, WALL], [-0.16, -0.16, WALL]]);
     for (const [x0, x1] of [[3, 5], [6.6, 8.6]]) {
-      s += rightWall('of-window', x0, x1, 1.0, 2.1) + line('of-mullion', [(x0 + x1) / 2, 0.03, 1.0], [(x0 + x1) / 2, 0.03, 2.1])
-        + line('of-mullion', [x0, 0.03, 1.55], [x1, 0.03, 1.55]);
+      s += rightWall('of-window', x0, x1, 1.0, 2.1);
+      for (const [sx, sz] of [[0.25, 1.9], [0.6, 1.72], [1.3, 1.95], [1.7, 1.8]]) {
+        const [cx, cy] = at(x0 + sx, 0.03, sz);
+        s += `<circle class="of-star" cx="${cx}" cy="${cy}" r="${(0.8 + (sx * 7) % 0.7).toFixed(1)}"/>`;
+      }
+      s += line('of-mullion', [(x0 + x1) / 2, 0.03, 1.0], [(x0 + x1) / 2, 0.03, 2.1]) + line('of-mullion', [x0, 0.03, 1.55], [x1, 0.03, 1.55]);
     }
+    { const [cx, cy] = at(4.35, 0.03, 1.82); s += `<circle class="of-orb" cx="${cx}" cy="${cy}" r="5.5"/>`; }
     s += `<g class="of-clock">${ring('of-clock-face', 10.3, 0.03, 1.85, 0.32)}<line class="of-hand h"/><line class="of-hand m"/></g>`;
-    s += `<g class="of-door">${leftWall('of-door-panel', 8.55, 9.95, 0, 2.05)}${line('of-door-line', [0.03, 9.25, 0.05], [0.03, 9.25, 2.0])}<circle class="of-knob" cx="${P(0.04, 9.75, 1.0)[0].toFixed(1)}" cy="${P(0.04, 9.75, 1.0)[1].toFixed(1)}" r="1.8"/></g>`;
+    s += `<g class="of-door">${leftWall('of-door-panel', 8.55, 9.95, 0, 2.05)}${line('of-door-line', [0.03, 9.25, 0.05], [0.03, 9.25, 2.0])}<circle class="of-knob" cx="${at(0.04, 9.75, 1.0)[0]}" cy="${at(0.04, 9.75, 1.0)[1]}" r="1.8"/></g>`;
+    s += `<g class="of-hot" data-goto="memory" tabindex="0" role="link" aria-label="Memory whiteboard: open Memory"><title>Memory whiteboard · open Memory</title>${leftWall('of-wb', 0.95, 2.25, 1.0, 1.95)}${leftWall('of-wb-tray', 0.95, 2.25, 0.94, 1.0)}<g class="of-notes"></g></g>`;
     s += `<g class="of-hot" data-goto="board" tabindex="0" role="link" aria-label="Bulletin board: open the Board"><title>Bulletin board · open the Board</title>${leftWall('of-cork', 2.35, 5.05, 0.95, 2.1)}<g class="of-cards"></g></g>`;
-    s += `<g class="of-hot" data-goto="messages" tabindex="0" role="link" aria-label="Mailbox: open Messages"><title>Mailbox · open Messages</title>${leftWall('of-mail', 7.05, 7.85, 1.25, 1.85)}${line('of-mail-slot', [0.03, 7.2, 1.66], [0.03, 7.7, 1.66])}<circle class="of-mail-dot" r="3.2" cx="${P(0.03, 7.85, 1.85)[0].toFixed(1)}" cy="${P(0.03, 7.85, 1.85)[1].toFixed(1)}"/></g>`;
+    s += `<g class="of-hot" data-goto="messages" tabindex="0" role="link" aria-label="Mailbox: open Messages"><title>Mailbox · open Messages</title>${leftWall('of-mail', 7.05, 7.85, 1.25, 1.85)}${line('of-mail-slot', [0.03, 7.2, 1.66], [0.03, 7.7, 1.66])}<circle class="of-mail-dot" r="3.2" cx="${at(0.03, 7.85, 1.85)[0]}" cy="${at(0.03, 7.85, 1.85)[1]}"/></g>`;
+    // Evening light over the room (furniture and agents stay bright, as if the lamps were on).
+    s += `<g class="of-night">${poly('', [[0, 0, 0], [W, 0, 0], [W, D, 0], [0, D, 0]])}${poly('', [[0, 0, 0], [0, D, 0], [0, D, WALL], [0, 0, WALL]])}${poly('', [[0, 0, 0], [W, 0, 0], [W, 0, WALL], [0, 0, WALL]])}</g>`;
+    // A neon sign on the back wall, drawn in the wall's plane.
+    { const [ex, ey] = at(10.85, 0.03, 1.93);
+      s += rightWall('of-sign-back', 10.7, 13.85, 1.8, 2.3)
+        + `<text class="of-sign" transform="matrix(0.866 0.5 0 1 ${ex} ${ey})">COMPANY FLOOR</text>`; }
     return s;
   }
 
@@ -120,7 +149,11 @@ const Office = (() => {
       + `<g class="of-screen" data-screen="${i}">${front('scr', sy, x + 0.5, x + 1.3, 0.9, 1.32)}`
       + line('code c1', [x + 0.58, sy, 1.22], [x + 1.02, sy, 1.22]) + line('code c2', [x + 0.66, sy, 1.12], [x + 1.18, sy, 1.12])
       + line('code c3', [x + 0.58, sy, 1.02], [x + 0.92, sy, 1.02]) + '</g>'
-      + box(x + 0.55, y + 0.55, 0.7, 0.22, 0.02, 0.75, 'm-key');
+      + box(x + 0.55, y + 0.55, 0.7, 0.22, 0.02, 0.75, 'm-key')
+      // Desk lamp, and the pool of light it throws after dark.
+      + box(x + 1.42, y + 0.14, 0.18, 0.18, 0.03, 0.75, 'm-dark') + line('of-lamp-pole', [x + 1.51, y + 0.23, 0.78], [x + 1.51, y + 0.23, 1.22])
+      + box(x + 1.36, y + 0.22, 0.3, 0.2, 0.09, 1.16, 'm-lamp')
+      + `<ellipse class="of-glow" cx="${at(x + 1.3, y + 0.55, 0.75)[0]}" cy="${at(x + 1.3, y + 0.55, 0.75)[1]}" rx="24" ry="12" fill="url(#of-lamp)"/>`;
   }
   const chairHtml = (cx, cy) => box(cx - 0.04, cy - 0.04, 0.08, 0.08, 0.4, 0, 'm-dark') + box(cx - 0.27, cy - 0.27, 0.54, 0.54, 0.06, 0.4, 'm-chair');
   function plantHtml(x, y, tall) {
@@ -143,8 +176,17 @@ const Office = (() => {
     add(0.55 + 0.55, plantHtml(0.3, 0.3, true));
     add(13.5 + 10.5, plantHtml(13.25, 10.25, false));
     add(0.55 + 10.55, plantHtml(0.3, 10.3, false));
-    add(1.7 + 0.35, `<title>Trophy shelf · open Wins</title>${box(1.0, 0.12, 1.4, 0.45, 1.3, 0, 'm-wood')}${box(1.25, 0.22, 0.22, 0.22, 0.25, 1.3, 'm-gold')}${box(1.85, 0.22, 0.2, 0.2, 0.18, 1.3, 'm-gold')}`,
-      ' class="of-hot" data-goto="wins" tabindex="0" role="link" aria-label="Trophy shelf: open Wins"');
+    add(1.7 + 0.35, `<title>Trophy shelf · open Wins</title>${box(1.0, 0.12, 1.4, 0.08, 1.62, 0, 'm-wood')}`
+      + [0, 0.56, 1.08, 1.56].map((z) => box(1.0, 0.12, 1.4, 0.42, 0.06, z, 'm-wood')).join('')
+      + box(1.0, 0.12, 0.06, 0.42, 1.62, 0, 'm-wood') + box(2.34, 0.12, 0.06, 0.42, 1.62, 0, 'm-wood')
+      + '<g class="of-trophies"></g>',
+    ' class="of-hot" data-goto="wins" tabindex="0" role="link" aria-label="Trophy shelf: open Wins"');
+    add(9.5 + 0.46, `<title>Server rack · open Activity</title>${box(9.15, 0.12, 0.7, 0.68, 1.55, 0, 'm-rack')}`
+      + [1.3, 1.08, 0.86, 0.64, 0.42].map((z, r) => [0, 1, 2].map((i) => {
+        const [cx, cy] = at(9.3 + i * 0.16, 0.81, z);
+        return `<circle class="of-led l${(r + i) % 4}" cx="${cx}" cy="${cy}" r="1.3"/>`;
+      }).join('') + line('of-slot', [9.68, 0.81, z], [9.8, 0.81, z])).join(''),
+    ' class="of-hot" data-goto="activity" tabindex="0" role="link" aria-label="Server rack: open Activity"');
     add(11.65 + 0.5, `<title>File cabinet · open Files</title>${box(11.2, 0.12, 0.9, 0.75, 1.35, 0, 'm-cab')}`
       + [0.45, 0.9].map((z) => line('of-drawer', [11.22, 0.871, z], [12.08, 0.871, z])).join('')
       + [0.25, 0.7, 1.15].map((z) => line('of-handle', [11.55, 0.872, z], [11.75, 0.872, z])).join(''),
@@ -230,7 +272,7 @@ const Office = (() => {
     if (partying) [dx, dy] = [-1, -1];
     let vx = (dx - dy) * C, vy = (dx + dy) * H;
     const len = Math.hypot(vx, vy) || 1;
-    vx = (vx / len) * 1.4; vy = (vy / len) * 1.1;
+    vx = (vx / len) * 1.6; vy = (vy / len) * 1.3;
     o.pupils.setAttribute('transform', `translate(${vx.toFixed(1)} ${vy.toFixed(1)})`);
   }
 
@@ -269,6 +311,12 @@ const Office = (() => {
     };
     hand('h', ((d.getHours() % 12) + d.getMinutes() / 60) / 12, 0.18);
     hand('m', d.getMinutes() / 60, 0.27);
+    const sky = SKY.filter(([h]) => h <= d.getHours()).pop();
+    svg.querySelector('.sky-a').setAttribute('stop-color', sky[1]);
+    svg.querySelector('.sky-b').setAttribute('stop-color', sky[2]);
+    const orb = svg.querySelector('.of-orb');
+    orb.setAttribute('class', `of-orb ${sky[3]}`);
+    root.classList.toggle('night', sky[3] === 'moon');
   }
 
   function frame() {
@@ -329,18 +377,22 @@ const Office = (() => {
     el.setAttribute('role', 'button');
     el.dataset.agent = a.id;
     el.style.setProperty('--c', colorFor(a.id));
-    el.innerHTML = `<title></title><ellipse class="ag-shadow" rx="11" ry="5"/><ellipse class="ag-ring" rx="16" ry="8"/>
-      <g class="ag-bob"><circle class="ag-body" cy="-18" r="11"/><circle class="ag-shine" cx="-4" cy="-23" r="3"/>
-      <g class="ag-eyes"><circle cx="-4" cy="-19" r="3"/><circle cx="4" cy="-19" r="3"/>
-      <g class="ag-pupils"><circle cx="-4" cy="-19" r="1.5"/><circle cx="4" cy="-19" r="1.5"/></g></g></g>`;
+    el.innerHTML = `<title></title><ellipse class="ag-aura" rx="17" ry="8.5"/><ellipse class="ag-shadow" rx="12" ry="5.5"/><ellipse class="ag-ring" rx="18" ry="9"/>
+      <g class="ag-bob"><g class="ag-feet"><ellipse class="ag-foot f1" cx="-5" cy="-2" rx="3.8" ry="2.4"/><ellipse class="ag-foot f2" cx="5" cy="-2" rx="3.8" ry="2.4"/></g>
+      <circle class="ag-body" cy="-19" r="13"/>
+      <g class="ag-face"><circle class="ag-shine" cx="-5" cy="-25" r="3.5"/>
+      <g class="ag-eyes"><circle cx="-4.5" cy="-20" r="3.4"/><circle cx="4.5" cy="-20" r="3.4"/>
+      <g class="ag-pupils"><circle cx="-4.5" cy="-20" r="1.7"/><circle cx="4.5" cy="-20" r="1.7"/></g></g></g>
+      <g class="ag-photo"></g><circle class="ag-rim" cy="-19" r="13"/></g>`;
     // Name and speech bubble live in a layer above the furniture so desks never hide them.
     const tag = document.createElementNS(NS, 'g');
     tag.setAttribute('class', 'of-tag');
-    tag.innerHTML = '<g class="ag-bubble" transform="translate(13 -36)"></g><text class="ag-name" y="15"></text>';
+    tag.innerHTML = '<g class="ag-bubble" transform="translate(15 -40)"></g><text class="ag-name" y="15"></text>';
     const o = {
       id: a.id, data: a, el, tag, desk, st: '', spot: '', icon: null, pendingIcon: null, path: [], dir: [0, 1],
       dwellUntil: 0, dwellMs: 0, heldUntil: 0, partyUntil: 0, dragging: false, event: null,
       bob: el.querySelector('.ag-bob'), pupils: el.querySelector('.ag-pupils'), bubble: tag.querySelector('.ag-bubble'),
+      photo: el.querySelector('.ag-photo'), pic: '',
     };
     el.__agent = o;
     o.st = agentState(a)[0];
@@ -353,6 +405,14 @@ const Office = (() => {
     // Start settled where it belongs instead of walking in from the desk.
     if (o.path.length) { const end = o.path[o.path.length - 1]; o.x = end.x; o.y = end.y; o.path = []; arrive(o, performance.now()); }
     return o;
+  }
+
+  // A custom picture in place of the agent's face, clipped to its round body; the animations still apply.
+  function setPhoto(o, pic) {
+    o.pic = pic;
+    o.photo.innerHTML = pic ? `<clipPath id="agclip-${o.id}"><circle cy="-19" r="12.4"/></clipPath>`
+      + `<image href="${pic}" x="-12.4" y="-31.4" width="24.8" height="24.8" preserveAspectRatio="xMidYMid slice" clip-path="url(#agclip-${o.id})"/>` : '';
+    o.el.classList.toggle('has-photo', !!pic);
   }
 
   function update(snap) {
@@ -368,11 +428,13 @@ const Office = (() => {
       o.data = a;
       o.desk = i;
       const [st, label] = agentState(a);
+      const pic = (snap.avatars || {})[a.id] || '';
+      if (pic !== o.pic) setPhoto(o, pic);
       if (st !== o.st) {
         o.st = st;
         if (!o.dragging && now >= o.heldUntil && !o.path.length) o.dwellUntil = 0;
       }
-      o.el.setAttribute('class', `of-agent st-${st}${o.dragging ? ' dragging' : ''}${selected === a.id ? ' selected' : ''}`);
+      o.el.setAttribute('class', `of-agent st-${st}${o.pic ? ' has-photo' : ''}${o.dragging ? ' dragging' : ''}${selected === a.id ? ' selected' : ''}`);
       o.el.setAttribute('aria-label', `${a.display_name}: ${label}. Press Enter for details.`);
       o.el.querySelector('title').textContent = `${a.display_name}: ${label}`;
       o.tag.setAttribute('class', `of-tag st-${st}`);
@@ -394,6 +456,20 @@ const Office = (() => {
       const col = i % 4, row = Math.floor(i / 4);
       const y0 = 2.55 + col * 0.62, z1 = 1.95 - row * 0.5;
       return `<g class="of-card s-${t.status}">${leftWall('', y0, y0 + 0.45, z1 - 0.38, z1)}</g>`;
+    }).join('');
+
+    // Trophies for finished work, in the colour of the agent who did it (newest first, two shelves).
+    const done = ((snap.wins && snap.wins.tasks) || []).slice().sort((x, y) => new Date(y.done_at) - new Date(x.done_at)).slice(0, 10);
+    svg.querySelector('.of-trophies').innerHTML = done.map((t, i) => {
+      const [cx, cy] = at(1.2 + (i % 5) * 0.24, 0.36, i < 5 ? 1.14 : 0.62);
+      return `<g class="of-trophy" transform="translate(${cx} ${cy})" style="--c:${colorFor(t.owner || 'fernando')}"><path d="M-3.2 -10.5h6.4v3.4a3.2 3.2 0 0 1-6.4 0z"/><path d="M-.8 -4h1.6v2.6h-1.6z"/><rect x="-2.6" y="-1.6" width="5.2" height="1.6" rx=".5"/></g>`;
+    }).join('');
+
+    // Sticky notes on the memory whiteboard, one per current lesson (up to 12), coloured by kind.
+    const lessons = (snap.memory || []).filter((m) => !m.superseded_by).slice(0, 12);
+    svg.querySelector('.of-notes').innerHTML = lessons.map((m, i) => {
+      const y0 = 1.05 + (i % 4) * 0.3, z1 = 1.85 - Math.floor(i / 4) * 0.27;
+      return `<g class="of-note k-${esc(m.kind)}">${leftWall('', y0, y0 + 0.22, z1 - 0.2, z1)}</g>`;
     }).join('');
 
     const toMe = snap.messages.filter((m) => m.to_agent === 'fernando' && Date.now() - new Date(m.created_at).getTime() < 2 * 86400e3).length;
@@ -477,6 +553,7 @@ const Office = (() => {
       <hr>
       ${held ? `<button role="menuitem" data-office-release="${esc(a.id)}">Back to work</button>` : ''}
       <button role="menuitem" data-toggle-agent="${esc(a.id)}">${a.status === 'active' ? 'Pause' : 'Resume'}</button>
+      <button role="menuitem" data-sprite="${esc(a.id)}">Customize sprite</button>
       <button role="menuitem" data-edit-agent="${esc(a.id)}">Settings</button>`;
     menu.classList.remove('hidden');
     const r = root.getBoundingClientRect();
@@ -640,7 +717,7 @@ const Office = (() => {
       const ctm = svg.getScreenCTM();
       if (!ctm || !root.isConnected || typeof Confetti === 'undefined') return;
       const [sx, sy] = P(o.x, o.y);
-      Confetti.burst(ctm.a * sx + ctm.e, ctm.d * (sy - 34 * spriteScale) + ctm.f,
+      Confetti.burst(ctm.a * sx + ctm.e, ctm.d * (sy - 38 * spriteScale) + ctm.f,
         { count: 60, power, spread: 0.8, colors: [colorFor(o.id), '#f4c84a', '#ffffff', '#5cc98b'] });
     };
     pop(0.8);
@@ -654,7 +731,7 @@ const Office = (() => {
     if (!o || !ctm) return;
     const r = root.getBoundingClientRect();
     const [sx, sy] = P(o.x, o.y);
-    const px = ctm.a * sx + ctm.e - r.left, py = ctm.d * (sy - 40 * spriteScale) + ctm.f - r.top;
+    const px = ctm.a * sx + ctm.e - r.left, py = ctm.d * (sy - 44 * spriteScale) + ctm.f - r.top;
     const w = sayBox.offsetWidth, h = sayBox.offsetHeight;
     sayBox.style.left = `${Math.max(6, Math.min(px - w / 2, r.width - w - 6))}px`;
     sayBox.style.top = `${Math.max(6, py - h - 6)}px`;

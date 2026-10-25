@@ -82,3 +82,33 @@ The test agent was switched off again afterwards.
 - A task's dialog shows its routing reason and offers re-routing.
 - The Manager settings save.
 - Phone and desktop: no page errors and no sideways scroll.
+
+## Office v2, conflicts and hand-over (2026-10-25)
+
+Database self-test, `select board._selftest_conflicts();`, rolled back. All pass:
+
+- **Flagging:** a conflict on a task blocks the task and goes to the project Supervisor.
+- **Wrong decider:** a non-Supervisor's resolution is refused.
+- **Supervisor decides:** the decision is saved to Memory and the task returns to Ready.
+- **For Fernando:** a conflict marked `for: fernando` is refused for the Supervisor and accepted from Fernando.
+- **Hand-over:** removing an agent moved its three open tasks to other agents. The half-done one went back to Ready with its handoff note plus a "Released" line.
+- **Weekly check:** the consistency check gives each active project's Supervisor one task and never creates a duplicate.
+- **Bug fixed:** `_route_score` crashed when an agent was on the team, never connected, overdue, on demand or out of turns or tokens. Bare string literals were being read as array literals. This would have stopped routing once Gemini or Muse were active.
+
+Live API (edge function v4):
+
+- The guide has a "When sources disagree" section.
+- MCP `tools/list` includes `board_flag_conflict` and `board_resolve_conflict`.
+- `POST /conflicts` and `/conflicts/resolve` route to the right actions.
+- The briefing Markdown shows open conflicts.
+
+Dashboard (Playwright, mocked board, desktop and phone, no page errors):
+
+- **Office:** day and night modes are correct (the night class is set at 22:00 and not at 11:00).
+- **Floor shortcuts:** trophies appear on the shelf, memory sticky notes on the whiteboard, and 15 blinking LEDs on the rack.
+- **Custom sprite:** Customize sprite → picture → zoom → Toon → Save sends `save_avatar` with a 2.9 KB WebP. The agent then shows the picture on the Floor.
+- **Conflicts:** the conflict cards show both sources. "A is right" fills the decision and sends `resolve_conflict`.
+- **Wins:** the shelf shows trophies and a medal.
+- **Messages:** two quiet check-ins fold into one line, and "show" expands them.
+- **Brief the Floor:** the prompt includes the topic and the file name.
+- **Website update banner:** it stays hidden while the version is unchanged and appears when `version.json` changes.
