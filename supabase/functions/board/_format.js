@@ -73,6 +73,12 @@ export function briefingMarkdown(b, api, agentPage) {
     : 'None.');
   if (b.more_unread_messages) out.push(`(${b.more_unread_messages} more; they will appear next briefing.)`);
 
+  if ((b.conflicts || []).length) {
+    out.push('', '## Open conflicts');
+    out.push(b.conflicts.map((c) => `- #${c.id} ${c.about} (${c.project || 'board-wide'}${c.task_id ? ', T-' + c.task_id : ''}) · raised by ${c.raised_by} · decides: ${c.decide}\n  A: ${c.source_a}\n  B: ${c.source_b}`).join('\n'));
+    out.push(`Supervisors decide: POST ${api}/conflicts/resolve {"id":<id>,"resolution":"..."}`);
+  }
+
   if (b.profile) {
     out.push('', '## Your skill profile');
     out.push(`Skills: ${(b.profile.skills || []).join(', ') || 'none yet'} · Profile: ${b.profile.profile || 'empty'}`);
