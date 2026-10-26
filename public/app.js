@@ -662,7 +662,17 @@ function render() {
   $('#needs-me').innerHTML = waiting ? `<a href="#" data-goto="board"><span class="badge">${waiting}</span> need you</a>` : '';
   for (const b of document.querySelectorAll('.tab')) b.classList.toggle('active', b.dataset.view === state.view);
   const scrollY = window.scrollY;
+  // A background refresh must not wipe what Fernando is typing: keep edited fields whose saved value is
+  // unchanged (for example the house rules while he writes a new one).
+  const edits = [...document.querySelectorAll('#view textarea[id], #view input[id], #view form textarea, #view form input')]
+    .filter((el) => el.type !== 'checkbox' && el.type !== 'file' && el.value !== el.defaultValue)
+    .map((el) => ({ key: el.id || `${el.form && el.form.id}|${el.name}`, value: el.value, saved: el.defaultValue }));
   $('#view').innerHTML = VIEWS[state.view]();
+  for (const e of edits) {
+    const [formId, name] = e.key.split('|');
+    const el = name ? document.querySelector(`#${formId} [name="${name}"]`) : document.getElementById(e.key);
+    if (el && el.defaultValue === e.saved) el.value = e.value;
+  }
   if (state.view === 'floor' && typeof Office !== 'undefined') Office.attach($('#office-slot'));
   window.scrollTo(0, scrollY);
 }
