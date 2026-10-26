@@ -597,7 +597,9 @@ const Office = (() => {
       if (!menu.contains(e.target)) closeMenu();
       const el = e.target.closest('.of-agent');
       if (!el) {
-        if (!pop.contains(e.target) && !e.target.closest('.of-hot')) closePop();
+        // Touching the menu must not close the details card: on phones the card is docked under the
+        // office, so closing it shifts the page and the tap lands on a different menu item.
+        if (!pop.contains(e.target) && !menu.contains(e.target) && !e.target.closest('.of-hot')) closePop();
         return;
       }
       const o = el.__agent;

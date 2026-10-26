@@ -539,6 +539,8 @@ tr.cred-row td { background: var(--gate-bg); }
 .sm-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: .85rem; pointer-events: none; }
 .sm-stage.ready .sm-empty { display: none; }
 .sm-controls { display: grid; gap: .45rem; min-width: 200px; flex: 1; }
+/* Visually hidden but still rendered: some iOS web views ignore a label tap on a display:none file input. */
+.sm-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; clip-path: inset(50%); }
 .sm-styles { display: flex; gap: .8rem; flex-wrap: wrap; }
 .sm-morph { margin: .8rem 0; }
 .sm-morph summary { cursor: pointer; font-weight: 600; }
