@@ -94,7 +94,7 @@ const SpriteMaker = (() => {
       <div class="sm-wrap">
         <div class="sm-stage" style="--c:${color}"><canvas id="sm-canvas" width="${OUT}" height="${OUT}" aria-label="Preview: drag to move the picture"></canvas><span class="sm-empty">Choose a picture</span></div>
         <div class="sm-controls">
-          <label class="btn" for="sm-file">Choose picture…</label><input type="file" id="sm-file" accept="image/*" class="hidden">
+          <label class="btn" for="sm-file">Choose picture…</label><input type="file" id="sm-file" accept="image/*" class="sm-file-input" tabindex="-1">
           <label for="sm-zoom">Zoom</label><input type="range" id="sm-zoom" min="1" max="4" step="0.05" value="1">
           <div class="sm-styles" role="radiogroup" aria-label="Style">
             ${[['plain', 'As is'], ['toon', 'Toon'], ['pixel', 'Pixel']].map(([v, l]) => `<label class="inline"><input type="radio" name="sm-style" value="${v}"${v === style ? ' checked' : ''}> ${l}</label>`).join('')}
