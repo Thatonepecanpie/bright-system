@@ -112,3 +112,9 @@ Dashboard (Playwright, mocked board, desktop and phone, no page errors):
 - **Messages:** two quiet check-ins fold into one line, and "show" expands them.
 - **Brief the Floor:** the prompt includes the topic and the file name.
 - **Website update banner:** it stays hidden while the version is unchanged and appears when `version.json` changes.
+
+## Sprites from Higgsfield (2026-10-26)
+
+- **Live:** Higgsfield `gpt_image_2_5` drew ChatGPT's ninja sprite for 0.25 credits. The `sprite` edge function fetched it and shrank it to a 192 px JPEG (17.8 KB), and it was saved as ChatGPT's sprite. The function refuses pictures from any other host.
+- **Live database:** `sprite_fetch` started a pg_net request, and `sprite_result` returned the 23.7 KB image. A non-Higgsfield URL is refused (PT400).
+- **Dashboard (Playwright, mocked Higgsfield and board, no page errors):** the dialog shows the cost (0.25 credits). "Sasuke Uchiha" → Draw it ran `generate_image`, polled `jobs_wait` twice, then `sprite_fetch` and `sprite_result`, and put the picture in the preview. Save sprite → `save_avatar`, and the Floor shows the picture.

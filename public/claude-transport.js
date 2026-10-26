@@ -126,6 +126,75 @@
     }
   };
 
+  // Sprites drawn by Higgsfield with the viewer's own Higgsfield connector (their plan's credits).
+  // The picture is then fetched and shrunk on the board's side (sprite_fetch / sprite_result),
+  // because this page cannot download from other sites.
+  const HF = 'Higgsfield';
+  const hfData = (res) => {
+    let p = res && res.payload !== undefined ? res.payload : res;
+    if (typeof p === 'string') { try { p = JSON.parse(p); } catch { /* keep text */ } }
+    if (p && !p.results && !p.jobs && !p.cost && Array.isArray(p.content)) {
+      const t = p.content.find((b) => b.type === 'text');
+      if (t) { try { p = JSON.parse(t.text); } catch { /* keep */ } }
+    }
+    return p || {};
+  };
+  const hfParams = (look, extra) => ({
+    model: 'gpt_image_2_5', aspect_ratio: '1:1', count: 1, use_unlim: false,
+    prompt: `${look}, drawn as a cute round mascot head for a game sprite: chibi proportions, big expressive eyes, flat vector colours, a thick clean dark outline, centred and filling a circle, plain light background, no text.`,
+    ...extra,
+  });
+  const hfError = (e) => {
+    if (e && e.code === 'server_not_connected') return boardError('Connect Higgsfield in claude.ai (Settings → Connectors), allow it for this page, then try again.');
+    if (e && e.code === 'tool_error') return boardError('Higgsfield said: ' + String(e.message || '').slice(0, 200));
+    return translate(e);
+  };
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  window.BOARD_HIGGSFIELD = {
+    async cost(look) {
+      const mcp = await mcpReady;
+      if (!mcp) throw boardError('Connectors are not available in this view.');
+      try {
+        const r = hfData(await mcp.callTool(HF, 'generate_image', { params: hfParams(look || 'a character', { get_cost: true }) }, { cache: false }));
+        return r.cost ? r.cost.credits : null;
+      } catch (e) { throw hfError(e); }
+    },
+    async make(look, token, onStatus = () => {}) {
+      const mcp = await mcpReady;
+      if (!mcp) throw boardError('Connectors are not available in this view.');
+      let job;
+      try {
+        onStatus('Asking Higgsfield to draw it…');
+        const r = hfData(await mcp.callTool(HF, 'generate_image', {
+          params: hfParams(look), context: 'Make a round cartoon sprite for an AI agent on a personal dashboard.',
+        }, { cache: false }));
+        job = r.results && r.results[0] && r.results[0].id;
+        if (!job) throw boardError('Higgsfield did not start a picture.' + (r.message ? ' ' + String(r.message).slice(0, 160) : ''));
+        let url = '';
+        for (let i = 0; i < 12 && !url; i++) {
+          onStatus('Drawing… (usually under a minute)');
+          const w = hfData(await mcp.callTool(HF, 'jobs_wait', { jobs: [{ index: 0, job_id: job }], timeout_seconds: 15 }, { cache: false }));
+          const j = (w.jobs || [])[0] || {};
+          if (j.status === 'completed') url = j.result_url;
+          else if (j.status && /fail|cancel|nsfw|error/.test(j.status)) throw boardError(`Higgsfield could not draw it (${j.status}). Try describing it differently.`);
+        }
+        if (!url) throw boardError('Higgsfield is taking long. Your picture will be in your Higgsfield library; try again in a minute.');
+        onStatus('Shrinking it to sprite size…');
+        const start = await window.BOARD_TRANSPORT('sprite_fetch', { url }, token);
+        for (let i = 0; i < 20; i++) {
+          await pause(1500);
+          const r2 = await window.BOARD_TRANSPORT('sprite_result', { request_id: start.request_id }, token);
+          if (r2.image) return r2.image;
+          if (r2.error) throw boardError(r2.error);
+        }
+        throw boardError('The board took too long to fetch the picture. Try again.');
+      } catch (e) {
+        throw e && e.code ? hfError(e) : e;
+      }
+    },
+  };
+
   // Saving a file from the File cabinet goes through claude.ai's download prompt.
   const downloadsReady = window.claude && window.claude.use ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
   window.BOARD_DOWNLOAD = async function (filename, data) {

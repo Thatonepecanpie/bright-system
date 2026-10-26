@@ -572,3 +572,7 @@ tr.cred-row td { background: var(--gate-bg); }
 /* ---------- New version banner ---------- */
 .update-banner { position: fixed; left: 50%; bottom: max(1rem, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 50; background: var(--panel); border: 1px solid var(--accent); border-radius: 999px; padding: .45rem .5rem .45rem 1rem; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); display: flex; align-items: center; gap: .6rem; font-size: .9rem; max-width: calc(100% - 2rem); }
 @media (prefers-reduced-motion: reduce) { .face, .sm-stage.ready canvas, .trophy.fresh { animation: none !important; } }
+.sm-hf { margin-top: .9rem; padding: .7rem .8rem; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+.sm-hf h3 { margin: 0 0 .3rem; }
+.sm-hf-row { display: flex; gap: .5rem; }
+.sm-hf-row input { flex: 1; min-width: 0; }

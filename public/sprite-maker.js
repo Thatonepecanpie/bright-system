@@ -1,8 +1,9 @@
 // Custom sprites: turn any picture into an agent's sprite. Fit it into the round body (drag to move,
 // slider to zoom), pick a style (as is, toon or pixel) and save a small image, about 20 KB, that the
-// Floor animates like any other sprite. For a real cartoon "mutation" of a character, the dialog offers a
-// prompt for ChatGPT's image generation (included in Plus); upload what it draws and style it here.
-// Uses app.js globals at call time: openDialog, copyText, esc, $.
+// Floor animates like any other sprite. On claude.ai, "Make one with Higgsfield" draws a cartoon sprite
+// from a description with the viewer's Higgsfield connector (BOARD_HIGGSFIELD, in claude-transport.js);
+// elsewhere the dialog offers a prompt for ChatGPT's image generation instead.
+// Uses app.js globals at call time: openDialog, copyText, esc, $, token.
 'use strict';
 
 const SpriteMaker = (() => {
@@ -101,7 +102,13 @@ const SpriteMaker = (() => {
           <p class="small muted">Drag the preview to move the picture.</p>
         </div>
       </div>
-      <details class="sm-morph"><summary>Want a real cartoon version of a character?</summary>
+      ${window.BOARD_HIGGSFIELD ? `<div class="sm-hf">
+        <h3>✨ Make one with Higgsfield</h3>
+        <p class="small">Describe a look: a character, an animal, a style. Higgsfield draws it as a cartoon sprite with your plan's credits (<span id="sm-hf-cost">about 0.25</span> per picture); nothing else is charged.</p>
+        <div class="sm-hf-row"><input id="sm-hf-look" maxlength="200" placeholder="e.g. Sasuke Uchiha, a fox astronaut, a samurai cat"><button class="btn primary" type="button" id="sm-hf-go">Draw it</button></div>
+        <p class="small muted" id="sm-hf-status" aria-live="polite"></p>
+      </div>` : ''}
+      <details class="sm-morph"><summary>${window.BOARD_HIGGSFIELD ? 'Or redraw your own picture in ChatGPT' : 'Want a real cartoon version of a character?'}</summary>
         <p class="small">ChatGPT can redraw it (image generation is included in your Plus plan, so it costs nothing extra). Paste this with the picture, then choose what it draws here:</p>
         <textarea id="sm-prompt" rows="3" readonly>${esc(MORPH_PROMPT)}</textarea>
         <div class="actions"><button class="btn small" type="button" id="sm-copy">Copy prompt</button></div>
@@ -144,6 +151,25 @@ const SpriteMaker = (() => {
     canvas.addEventListener('pointerup', stop);
     canvas.addEventListener('pointercancel', stop);
     $('#sm-copy').addEventListener('click', () => copyText(MORPH_PROMPT, $('#sm-copy')));
+    if (window.BOARD_HIGGSFIELD) {
+      const status = (t) => { $('#sm-hf-status').textContent = t; };
+      window.BOARD_HIGGSFIELD.cost('a character').then((c) => { if (c != null && $('#sm-hf-cost')) $('#sm-hf-cost').textContent = `${c} credits`; }).catch(() => {});
+      const go = async () => {
+        const look = $('#sm-hf-look').value.trim();
+        if (!look) return status('Describe the look first.');
+        $('#sm-hf-go').disabled = true;
+        try {
+          const pic = await window.BOARD_HIGGSFIELD.make(look, token(), status);
+          style = 'plain';
+          document.querySelector('input[name="sm-style"][value="plain"]').checked = true;
+          await use(pic);
+          status('Done. Adjust it if you like, then Save sprite. Not quite right? Draw it again.');
+        } catch (e) { status(e.message); }
+        $('#sm-hf-go').disabled = false;
+      };
+      $('#sm-hf-go').addEventListener('click', go);
+      $('#sm-hf-look').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+    }
     $('#sm-save').addEventListener('click', async () => {
       const url = encode(canvas);
       if (!url) return fail('The picture is too detailed to store. Try zooming in or the Pixel style.');
