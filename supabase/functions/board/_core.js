@@ -41,9 +41,11 @@ function via(headers) {
   return ua ? `${client} | ${ua}` : client;
 }
 
-function cleanBody(body) {
+// A "key" field is only the caller's credential when no header carries one; otherwise it is data
+// (for example save_setting's {"key": "house_rules", "value": ...}) and must reach the database.
+function cleanBody(body, headers) {
   const b = body && typeof body === 'object' && !Array.isArray(body) ? { ...body } : {};
-  delete b.key;
+  if (!/^Bearer\s+\S/i.test(String(headers.authorization || '')) && !headers['x-board-key']) delete b.key;
   return b;
 }
 
@@ -57,7 +59,7 @@ export async function handle(req, cfg) {
   const { method, query = {}, headers = {} } = req;
   const parts = String(req.path || '').split('/').filter(Boolean);
   const [a, b, c] = parts;
-  const body = cleanBody(req.body);
+  const body = cleanBody(req.body, headers);
 
   const agentCall = async (action, args, asText = false) => {
     const key = credential(headers, req.body);
