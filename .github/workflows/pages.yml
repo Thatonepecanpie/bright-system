@@ -30,7 +30,7 @@ jobs:
         run: |
           v="${GITHUB_SHA::12}"
           printf '{"version":"%s"}\n' "$v" > public/version.json
-          sed -i -E "s#(src|href)=\"(style\.css|config\.js|confetti\.js|office\.js|sprite-maker\.js|app\.js)\"#\1=\"\2?v=$v\"#g; s#<meta name=\"build\" content=\"[^\"]*\">#<meta name=\"build\" content=\"$v\">#" public/index.html
+          sed -i -E "s#(src|href)=\"(style\.css|config\.js|confetti\.js|office\.js|sprite-maker\.js|home\.js|app\.js)\"#\1=\"\2?v=$v\"#g; s#<meta name=\"build\" content=\"[^\"]*\">#<meta name=\"build\" content=\"$v\">#" public/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public

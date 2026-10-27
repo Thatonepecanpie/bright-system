@@ -11,7 +11,7 @@ const page = `<title>Company Floor</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=Public+Sans:wght@400;600;700&display=swap">
 <style>
 ${read('public/style.css')}
 </style>
@@ -28,6 +28,9 @@ ${noClose(read('public/office.js'))}
 </script>
 <script>
 ${noClose(read('public/sprite-maker.js'))}
+</script>
+<script>
+${noClose(read('public/home.js'))}
 </script>
 <script>
 ${noClose(read('public/app.js'))}

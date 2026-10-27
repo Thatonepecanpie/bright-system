@@ -8,7 +8,7 @@
   <title>Company Floor</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=Public+Sans:wght@400;600;700&display=swap">
   <link rel="stylesheet" href="style.css">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icon-180.png">
@@ -36,7 +36,8 @@
       <button class="btn small" id="refresh">Refresh</button>
     </header>
     <nav class="tabs" id="tabs">
-      <button class="tab active" data-view="floor">Floor</button>
+      <button class="tab active" data-view="home">Home</button>
+      <button class="tab" data-view="floor">Floor</button>
       <button class="tab" data-view="board">Board</button>
       <button class="tab" data-view="files">Files</button>
       <button class="tab" data-view="vault">Vault</button>
@@ -51,6 +52,13 @@
       <div id="flash"></div>
       <div id="view"></div>
     </main>
+    <nav class="bottom-nav" id="bottom-nav" aria-label="Main">
+      <button data-goto="home"><span aria-hidden="true">🏠</span>Home<span class="bn-count hidden"></span></button>
+      <button data-goto="floor"><span aria-hidden="true">🏢</span>Floor</button>
+      <button data-goto="board"><span aria-hidden="true">🗂</span>Board</button>
+      <button data-goto="messages"><span aria-hidden="true">💬</span>Messages</button>
+      <button data-home-nav><span aria-hidden="true">☰</span>More</button>
+    </nav>
   </div>
 
   <dialog id="dialog">
@@ -67,6 +75,7 @@
   <script src="confetti.js"></script>
   <script src="office.js"></script>
   <script src="sprite-maker.js"></script>
+  <script src="home.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
