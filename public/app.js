@@ -18,7 +18,7 @@ const DOWNLOAD_EXT = /\.(gif|png|jpe?g|webp|mp4|webm|txt|json|md|docx|pptx|epub|
 
 const API = window.BOARD_API || '/api';
 const $ = (sel, root = document) => root.querySelector(sel);
-const state = { snap: null, view: 'floor', project: '', showSuperseded: false, folder: '', showTrash: false };
+const state = { snap: null, view: 'home', project: '', showSuperseded: false, folder: '', showTrash: false };
 
 // ---------- helpers ----------
 
@@ -96,6 +96,8 @@ function formData(form) {
     if (el.type === 'checkbox') {
       if (el.dataset.group) (out[el.dataset.group] ||= []).push(...(el.checked ? [el.value] : []));
       else out[el.name] = el.checked;
+    } else if (el.type === 'radio') {
+      if (el.checked) out[el.name] = el.value;
     } else out[el.name] = el.value;
   }
   return out;
@@ -278,8 +280,8 @@ const visibleTasks = () => state.snap.tasks.filter((t) => !state.project || t.pr
 const hint = (text) => `<p class="hint">${text}</p>`;
 const pendingRequests = () => (state.snap.schedule_requests || []).filter((r) => r.status === 'pending');
 const openConflicts = () => (state.snap.conflicts || []).filter((c) => c.status === 'open');
-const needsMe = () => state.snap.tasks.filter((t) => t.status === 'needs_fernando').length + pendingRequests().length
-  + openConflicts().filter((c) => c.decide === 'fernando').length;
+// Everything waiting on Fernando, as Home lists it (approvals, schedule requests, his conflicts, open questions).
+const needsMe = () => Home.needs().length;
 const avatarOf = (id) => (state.snap.avatars || {})[id] || '';
 // An agent's face: its custom sprite picture if it has one, else the drawn bot.
 const face = (a, st, size = '') => (avatarOf(a.id)
@@ -652,15 +654,21 @@ function viewSettings() {
       <div class="actions"><button class="btn" id="rotate-owner">Rotate my owner token</button><button class="btn danger" id="sign-out">Sign out on this device</button></div></div>`;
 }
 
-const VIEWS = { floor: viewFloor, board: viewBoard, files: viewFiles, vault: viewVault, wins: viewWins, projects: viewProjects, memory: viewMemory, messages: viewMessages, activity: viewActivity, settings: viewSettings };
+const VIEWS = { home: () => Home.view(), floor: viewFloor, board: viewBoard, files: viewFiles, vault: viewVault, wins: viewWins, projects: viewProjects, memory: viewMemory, messages: viewMessages, activity: viewActivity, settings: viewSettings };
 
 function render() {
   if (!state.snap) return;
   const sel = $('#project-filter');
   sel.innerHTML = `<option value="">All projects</option>` + activeProjects().map((p) => `<option value="${esc(p.slug)}"${p.slug === state.project ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
   const waiting = needsMe();
-  $('#needs-me').innerHTML = waiting ? `<a href="#" data-goto="board"><span class="badge">${waiting}</span> need you</a>` : '';
+  $('#needs-me').innerHTML = waiting ? `<a href="#" data-goto="home"><span class="badge">${waiting}</span> need you</a>` : '';
   for (const b of document.querySelectorAll('.tab')) b.classList.toggle('active', b.dataset.view === state.view);
+  for (const b of document.querySelectorAll('#bottom-nav [data-goto]')) b.classList.toggle('active', b.dataset.goto === state.view);
+  const more = $('#bottom-nav [data-home-nav]');
+  if (more) more.classList.toggle('active', !['home', 'floor', 'board', 'messages'].includes(state.view));
+  const dot = $('#bottom-nav .bn-count');
+  if (dot) { dot.textContent = waiting || ''; dot.classList.toggle('hidden', !waiting); }
+  document.body.dataset.view = state.view;
   const scrollY = window.scrollY;
   // A background refresh must not wipe what Fernando is typing: keep edited fields whose saved value is
   // unchanged (for example the house rules while he writes a new one).
@@ -1151,12 +1159,17 @@ async function checkVersion() {
 // ---------- events ----------
 
 document.addEventListener('click', async (ev) => {
+  if (Home.click(ev)) return;
   const el = ev.target.closest('a[data-task], .card[data-task], [data-goto], [data-ping], [data-wake], [data-give], [data-edit-project], [data-new-assignment], [data-edit-assignment], [data-toggle-agent], [data-edit-agent], [data-correct-memory], [data-file], [data-file-history], [data-file-version], [data-file-restore], [data-file-delete], [data-undelete], [data-vault-edit], [data-vault-reveal], [data-vault-revoke], [data-copy-ping], [data-conflict], [data-achievement], [data-show-quiet], [data-sprite], [data-sched-approve], [data-sched-change], [data-sched-decline], #run-manager, #save-manager, #brief-floor, #update-now, #new-task, #new-project, #new-agent, #new-memory, #new-message, #new-file, #upload-file, #new-cred, #run-sweep, #save-hours, #rotate-owner, #sign-out');
   if (!el) return;
   const d = el.dataset;
   if (el.tagName === 'A') ev.preventDefault();
   if (d.task) { if ($('#dialog').open) $('#dialog').close(); return openTask(Number(d.task)); }
-  if (d.goto) { state.view = d.goto; remember('board_view', state.view); return render(); }
+  if (d.goto) {
+    if ($('#dialog').open) $('#dialog').close();
+    state.view = d.goto; remember('board_view', state.view); render();
+    return window.scrollTo(0, 0);
+  }
   if (d.ping) return pingAgent(d.ping);
   if (d.wake) return wakeAgent(d.wake);
   if (d.give) return newTask({ assignee: d.give, role_tag: 'any' });
@@ -1281,10 +1294,11 @@ $('#login-btn').addEventListener('click', async () => {
 });
 $('#token').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#login-btn').click(); });
 
-state.view = recall('board_view') || 'floor';
+// Phones always open on Home, the glanceable page; bigger screens return to the last view.
+state.view = matchMedia('(max-width: 700px)').matches ? 'home' : recall('board_view') || 'home';
 state.project = recall('board_project');
 state.folder = recall('board_folder');
-if (!VIEWS[state.view]) state.view = 'floor';
+if (!VIEWS[state.view]) state.view = 'home';
 
 if (token()) {
   $('#app').classList.remove('hidden');
