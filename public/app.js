@@ -534,12 +534,59 @@ function viewProjects() {
       return `<div class="panel">
         <div class="row-head"><div><h2>${esc(p.name)}</h2>
           <div class="small muted">${esc(p.slug)} · <span class="pill ${p.status === 'active' ? 'ok' : ''}">${esc(p.status)}</span> · Supervisor: <strong>${esc(p.supervisor ? agentName(p.supervisor) : 'none')}</strong> · ${open} open task${open === 1 ? '' : 's'}</div></div>
-          <div class="actions" style="margin:0"><button class="btn small" data-edit-project="${p.id}">Edit</button><button class="btn small" data-new-assignment="${p.slug}">+ Add to team</button></div></div>
+          <div class="actions" style="margin:0"><button class="btn small" data-edit-project="${p.id}">Edit</button><button class="btn small" data-new-assignment="${p.slug}">+ Add to team</button><button class="btn small" data-new-routine="${p.slug}">+ Routine</button></div></div>
         ${p.goal ? `<p class="small">${esc(p.goal)}</p>` : ''}
         <div class="table-wrap"><table><thead><tr><th>Agent</th><th>Role</th><th>Scope</th><th></th></tr></thead>
         <tbody>${team || '<tr><td colspan="4" class="muted">Nobody on the team yet.</td></tr>'}</tbody></table></div>
+        ${routinesTable(p)}
       </div>`;
     }).join('') || '<div class="empty">No projects yet.</div>'}`;
+}
+
+const ROUTINE_EVERY = [['every 4 hours', 'Every 4 hours'], ['once a day', 'Every day'], ['every 2 days', 'Every 2 days'], ['once a week', 'Every week']];
+const routinesOf = (p) => (state.snap.routines || []).filter((r) => r.project_id === p.id && r.status !== 'ended');
+
+// Recurring work on a project: each routine makes a fresh task on its schedule until it is paused or ended.
+function routinesTable(p) {
+  const list = routinesOf(p);
+  if (!list.length) return '';
+  const rows = list.map((r) => `<tr>
+    <td><strong>${esc(r.title)}</strong>${r.until_note ? `<div class="small muted">until ${esc(r.until_note)}</div>` : ''}</td>
+    <td class="small">${esc(r.every)}</td>
+    <td>${r.assignee ? `<span class="pill who" style="--c:${colorFor(r.assignee)}">${esc(agentName(r.assignee))}</span>` : '<span class="small muted">the Floor picks</span>'}</td>
+    <td class="small">${r.status === 'active' ? `next ${esc(stamp(r.next_at))}` : `<span class="pill ${r.status === 'proposed' ? 'gate' : ''}">${esc(r.status)}</span>`}${r.last_task ? `<br><a href="#" data-task="${r.last_task_id}">${esc(r.last_task.ref)}</a> <span class="muted">${esc(STATUS_LABEL[r.last_task.status] || r.last_task.status)}</span>` : ''}</td>
+    <td><div class="actions" style="margin:0">
+      ${r.status === 'active' ? `<button class="btn small" data-routine-status="${r.id}|paused">Pause</button>` : `<button class="btn small" data-routine-status="${r.id}|active">${r.status === 'proposed' ? 'Approve' : 'Resume'}</button>`}
+      <button class="btn small" data-edit-routine="${r.id}">Edit</button></div></td></tr>`).join('');
+  return `<h3 style="margin-top:1rem">🔁 Routines</h3><p class="small muted">Each one makes a fresh task on its schedule. No new copy while the last one is still open.</p>
+    <div class="table-wrap"><table><thead><tr><th>Routine</th><th>How often</th><th>Who</th><th>Next / last copy</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function routineDialog(r = {}, slug = '') {
+  const isNew = !r.id;
+  const project = r.project || slug || state.project || (activeProjects()[0] || {}).slug;
+  const everyOpts = ROUTINE_EVERY.some(([v]) => v === r.every) || !r.every ? ROUTINE_EVERY : [[r.every, r.every], ...ROUTINE_EVERY];
+  openDialog(isNew ? 'New routine' : `Routine #${r.id}`, `<form>
+    <div class="dialog-error error hidden"></div>
+    <p class="small muted">A routine makes a fresh task on its schedule until you pause or end it. If the last copy is still open, it waits instead of piling up.</p>
+    <label for="r-title">Title</label><input id="r-title" name="title" required maxlength="200" value="${esc(r.title || '')}" placeholder="e.g. Daily application run">
+    <div class="row">
+      <div><label for="r-project">Project</label><select id="r-project" name="project" ${isNew ? '' : 'disabled'}>${options(activeProjects().map((p) => [p.slug, p.name]), project)}</select></div>
+      <div><label for="r-every">How often</label><select id="r-every" name="every">${options(everyOpts, r.every || 'once a day')}</select></div>
+      <div><label for="r-who">Who</label><select id="r-who" name="assignee">${options([['', 'Let the Floor decide'], ...liveAgents().map((a) => [a.id, a.display_name])], r.assignee || '')}</select></div>
+      <div><label for="r-priority">Priority</label><select id="r-priority" name="priority">${options([[1, 'P1 high'], [2, 'P2 normal'], [3, 'P3 low']], r.priority || 2)}</select></div>
+    </div>
+    <label for="r-until">Until (in words)</label><input id="r-until" name="until" maxlength="200" value="${esc(r.until_note || '')}" placeholder="e.g. I accept a job offer">
+    <label for="r-desc">What each copy asks for</label><textarea id="r-desc" name="description" rows="6">${esc(r.description || '')}</textarea>
+    ${isNew ? '' : `<label for="r-status">Status</label><select id="r-status" name="status">${options([...(r.status === 'proposed' ? [['proposed', 'Proposed (waiting)']] : []), ['active', 'On'], ['paused', 'Paused'], ['ended', 'Ended']], r.status)}</select>
+      <p class="small muted">Made ${r.runs} cop${r.runs === 1 ? 'y' : 'ies'} so far · created by ${esc(agentName(r.created_by))}</p>`}
+    <div class="actions"><button class="btn primary">${isNew ? 'Start routine' : 'Save'}</button></div>
+  </form>`, async (f) => {
+    const p = { ...f, priority: Number(f.priority) };
+    if (isNew) { if (!p.assignee) delete p.assignee; delete p.status; } else { p.id = r.id; delete p.project; if (p.status === r.status) delete p.status; }
+    const out = await act(() => api('save_routine', p), isNew ? 'Routine started.' : 'Routine saved.');
+    if (out && out.last_task && isNew) flash(`🔁 First copy: ${out.last_task.ref}. Next one ${stamp(out.next_at)}.`);
+  });
 }
 
 function viewMemory() {
@@ -709,6 +756,8 @@ function taskForm(t = {}) {
       <div><label for="f-due">Due date</label><input id="f-due" name="due_date" type="date" value="${esc(t.due_date || '')}"></div>
       <div><label for="f-gate">Human gate</label><select id="f-gate" name="human_gate">${options(GATES, t.human_gate || '')}</select></div>
     </div>
+    ${isNew ? `<div class="row"><div><label for="f-repeat">Repeat</label><select id="f-repeat" name="repeat">${options([['', 'Just once'], ...ROUTINE_EVERY], '')}</select></div>
+      <div><label for="f-until">Until (if it repeats)</label><input id="f-until" name="until" maxlength="200" placeholder="e.g. I accept a job offer"></div></div>` : ''}
     <label>Skills needed <span class="muted">(optional; the Floor guesses from the title if blank)</span></label>${skillChecks(t.skills || [])}
     <label for="f-desc">Description</label><textarea id="f-desc" name="description">${esc(t.description || '')}</textarea>
     <label for="f-next">Next action</label><input id="f-next" name="next_action" value="${esc(t.next_action || '')}">
@@ -756,6 +805,14 @@ function newTask(preset = {}) {
   if (!activeProjects().length) return flash('Create a project first.', 'error');
   openDialog(preset.assignee ? `New task for ${agentName(preset.assignee)}` : 'New task', taskForm(preset), async (f) => {
     const p = taskPayload(f);
+    if (p.repeat) {
+      const rt = { project: p.project, title: p.title, description: p.description, every: p.repeat, until: p.until, priority: p.priority, role_tag: p.role_tag, skills: p.skills };
+      if (p.assignee) rt.assignee = p.assignee;
+      const out = await act(() => api('save_routine', rt), `Routine started: a fresh copy ${p.repeat === 'once a day' ? 'every day' : p.repeat}.`);
+      if (out && out.last_task) flash(`🔁 First copy: ${out.last_task.ref}. Next one ${stamp(out.next_at)}.`);
+      return;
+    }
+    delete p.repeat; delete p.until;
     if (!p.human_gate) delete p.human_gate;
     if (!p.assignee) delete p.assignee;
     const r = await act(() => api('create_task', p), p.assignee ? `Task created for ${agentName(p.assignee)}. They'll pick it up on their next turn.` : 'Task created.');
@@ -1160,7 +1217,7 @@ async function checkVersion() {
 
 document.addEventListener('click', async (ev) => {
   if (Home.click(ev)) return;
-  const el = ev.target.closest('a[data-task], .card[data-task], [data-goto], [data-ping], [data-wake], [data-give], [data-edit-project], [data-new-assignment], [data-edit-assignment], [data-toggle-agent], [data-edit-agent], [data-correct-memory], [data-file], [data-file-history], [data-file-version], [data-file-restore], [data-file-delete], [data-undelete], [data-vault-edit], [data-vault-reveal], [data-vault-revoke], [data-copy-ping], [data-conflict], [data-achievement], [data-show-quiet], [data-sprite], [data-sched-approve], [data-sched-change], [data-sched-decline], #run-manager, #save-manager, #brief-floor, #update-now, #new-task, #new-project, #new-agent, #new-memory, #new-message, #new-file, #upload-file, #new-cred, #run-sweep, #save-hours, #rotate-owner, #sign-out');
+  const el = ev.target.closest('a[data-task], .card[data-task], [data-goto], [data-ping], [data-wake], [data-give], [data-edit-project], [data-new-assignment], [data-edit-assignment], [data-toggle-agent], [data-edit-agent], [data-correct-memory], [data-file], [data-file-history], [data-file-version], [data-file-restore], [data-file-delete], [data-undelete], [data-vault-edit], [data-vault-reveal], [data-vault-revoke], [data-copy-ping], [data-conflict], [data-achievement], [data-show-quiet], [data-sprite], [data-sched-approve], [data-sched-change], [data-sched-decline], [data-new-routine], [data-edit-routine], [data-routine-status], #run-manager, #save-manager, #brief-floor, #update-now, #new-task, #new-project, #new-agent, #new-memory, #new-message, #new-file, #upload-file, #new-cred, #run-sweep, #save-hours, #rotate-owner, #sign-out');
   if (!el) return;
   const d = el.dataset;
   if (el.tagName === 'A') ev.preventDefault();
@@ -1231,6 +1288,12 @@ document.addEventListener('click', async (ev) => {
   if (d.editProject) return projectDialog(state.snap.projects.find((p) => p.id === Number(d.editProject)));
   if (d.newAssignment) return assignmentDialog(d.newAssignment);
   if (d.editAssignment) { const [slug, agent] = d.editAssignment.split('|'); return assignmentDialog(slug, agent); }
+  if (d.newRoutine) return routineDialog({}, d.newRoutine);
+  if (d.editRoutine) return routineDialog((state.snap.routines || []).find((r) => r.id === Number(d.editRoutine)));
+  if (d.routineStatus) {
+    const [id, status] = d.routineStatus.split('|');
+    return act(() => api('save_routine', { id: Number(id), status }), status === 'paused' ? 'Routine paused.' : 'Routine is on.').catch(() => {});
+  }
   if (d.editAgent) return agentDialog(state.snap.agents.find((a) => a.id === d.editAgent));
   if (d.toggleAgent) {
     const a = state.snap.agents.find((x) => x.id === d.toggleAgent);

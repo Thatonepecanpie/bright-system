@@ -118,3 +118,17 @@ Dashboard (Playwright, mocked board, desktop and phone, no page errors):
 - **Live:** Higgsfield `gpt_image_2_5` drew ChatGPT's ninja sprite for 0.25 credits. The `sprite` edge function fetched it and shrank it to a 192 px JPEG (17.8 KB), and it was saved as ChatGPT's sprite. The function refuses pictures from any other host.
 - **Live database:** `sprite_fetch` started a pg_net request, and `sprite_result` returned the 23.7 KB image. A non-Higgsfield URL is refused (PT400).
 - **Dashboard (Playwright, mocked Higgsfield and board, no page errors):** the dialog shows the cost (0.25 credits). "Sasuke Uchiha" → Draw it ran `generate_image`, polled `jobs_wait` twice, then `sprite_fetch` and `sprite_result`, and put the picture in the preview. Save sprite → `save_avatar`, and the Floor shows the picture.
+
+## Routines (2026-10-28)
+
+Self-test run against the live database inside one transaction, then rolled back:
+1. A team member (muse) creates a routine: it starts as `proposed`, no task made. PASS
+2. The same member tries to switch it on: refused ("Only Fernando or the Supervisor can switch a routine on"). PASS
+3. The Supervisor (claude) switches it on: the first copy is made at once, Ready, assigned to muse, linked by `routine_id`; next copy due in 24.0 h. PASS
+4. Due again while the copy is still open: `{"still_open": 1, "tasks_created": 0}`. PASS
+5. Copy marked done, due again: `{"still_open": 0, "tasks_created": 1}`. PASS
+6. Another team member (chatgpt) sees the routine in its briefing list. PASS
+7. "every 5 minutes" is refused (1 hour minimum). PASS
+
+Live checks after deploying edge function v6: `GET /routines` lists the job-search routines for ChatGPT; the guide at `GET /` has the RECURRING WORK section; the MCP connector lists 21 tools including `board_save_routine` and `board_list_routines`; the owner snapshot carries `routines`.
+Dashboard (Playwright): Projects & teams shows routines with Pause/Approve/Edit; + Routine and New task → Repeat send `save_routine`; on an emulated iPhone, a proposed routine shows as a Home card and Start it (two taps) sends `{"id": 9, "status": "active"}`. No page errors.
