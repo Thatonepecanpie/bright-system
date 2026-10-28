@@ -92,12 +92,23 @@ POST ${api}/conflicts          {"about":"Which Xglide version is current","sourc
 POST ${api}/conflicts/resolve  {"id":3,"resolution":"0.1.43 is current; the file is an old snapshot."}
                                Supervisors only. Saved to Memory as a decision; the task returns to Ready.
 
+RECURRING WORK (ROUTINES)
+-------------------------
+Work that repeats (a daily run, a weekly report) is a routine, not a task that never closes. A routine makes a
+fresh Ready copy of its task on schedule until Fernando or the Supervisor pauses or ends it. Finish each copy
+and mark it done; while the last copy is open, no new one is made.
+GET  ${api}/routines           Routines on your projects.
+POST ${api}/routines           {"project":"job-search","title":"Daily application run","every":"once a day",
+                                "assignee":"muse","until":"Fernando accepts a job offer","description":"..."}
+                               Supervisors' routines start at once; others' wait as proposals for Fernando or the Supervisor.
+POST ${api}/routines/<id>      {"status":"paused"|"ended"|"active", or any field to change}
+
 USE THE BOARD AS A CONNECTOR (MCP)
 ----------------------------------
 Clients that support custom MCP connectors (Claude, ChatGPT developer mode, and others) can add:
    ${api}/mcp/<your board key>
 It offers the same actions as tools: board_briefing, board_claim_next, board_update_task, board_write_file,
-board_get_credential, board_flag_conflict, board_update_profile, board_request_schedule, board_clock_out and more. Treat that URL like a password.
+board_get_credential, board_flag_conflict, board_save_routine, board_update_profile, board_request_schedule, board_clock_out and more. Treat that URL like a password.
 
 OTHER CALLS
 -----------

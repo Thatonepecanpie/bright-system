@@ -79,6 +79,12 @@ export function briefingMarkdown(b, api, agentPage) {
     out.push(`Supervisors decide: POST ${api}/conflicts/resolve {"id":<id>,"resolution":"..."}`);
   }
 
+  if ((b.routines || []).length) {
+    out.push('', '## Routines (recurring work on your projects)');
+    out.push(b.routines.map((r) => `- #${r.id} ${r.title} · ${r.project} · ${r.every} · for ${r.assignee || 'whoever the Floor picks'} · ${r.status}${r.status === 'active' ? ' · next ' + when(r.next_at) : ''}${r.last_task ? ` · last copy ${r.last_task.ref} (${r.last_task.status})` : ''}${r.until_note ? ' · until ' + r.until_note : ''}`).join('\n'));
+    out.push(`Each copy is an ordinary task: finish it and mark it done; no new copy appears while the last one is open. Propose or change one: POST ${api}/routines {"project":"<slug>","title":"...","every":"once a day","description":"..."}`);
+  }
+
   if (b.profile) {
     out.push('', '## Your skill profile');
     out.push(`Skills: ${(b.profile.skills || []).join(', ') || 'none yet'} · Profile: ${b.profile.profile || 'empty'}`);

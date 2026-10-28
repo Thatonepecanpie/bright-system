@@ -34,6 +34,7 @@ const Home = (() => {
     for (const t of state.snap.tasks.filter((x) => x.status === 'needs_fernando')) items.push({ kind: 'task', t });
     for (const r of pendingRequests()) items.push({ kind: 'schedule', r });
     for (const c of openConflicts().filter((x) => x.decide === 'fernando')) items.push({ kind: 'conflict', c });
+    for (const r of (state.snap.routines || []).filter((x) => x.status === 'proposed')) items.push({ kind: 'routine', r });
     for (const m of questions()) items.push({ kind: 'question', m });
     return items;
   }
@@ -90,6 +91,16 @@ const Home = (() => {
         <p class="h-note">Now ${esc(r.prev_every)}. ${esc(r.reason)}</p>
         <div class="h-acts"><button class="h-btn primary" data-home-act="sched-ok:${r.id}">✓ Approve</button>
           <button class="h-btn" data-home-act="sched-no:${r.id}">✕ Decline</button></div></article>`;
+    }
+    if (item.kind === 'routine') {
+      const r = item.r;
+      return `<article class="h-card">
+        <p class="h-kick">🔁 New routine · ${esc(agentName(r.created_by))} asks · ${esc(r.project)}</p>
+        <h3>${esc(r.title)}</h3>
+        <p class="h-note">${esc(r.every)}${r.assignee ? ` · for ${esc(agentName(r.assignee))}` : ''}${r.until_note ? ` · until ${esc(r.until_note)}` : ''}. ${esc(r.description)}</p>
+        <div class="h-acts"><button class="h-btn primary" data-home-act="routine-ok:${r.id}">✓ Start it</button>
+          <button class="h-btn" data-home-act="routine-no:${r.id}">✕ Decline</button>
+          <button class="h-btn ghost" data-edit-routine="${r.id}">Details</button></div></article>`;
     }
     if (item.kind === 'conflict') {
       const c = item.c;
@@ -169,6 +180,8 @@ const Home = (() => {
     if (what === 'sendback') return act(() => api('update_task', { id, status: 'ready', note: 'Sent back from Home.' }), 'Sent back to Ready.').catch(() => {});
     if (what === 'sched-ok') return decideSchedule(id, 'approve');
     if (what === 'sched-no') return decideSchedule(id, 'decline');
+    if (what === 'routine-ok') return act(() => api('save_routine', { id, status: 'active' }), 'Routine started.').catch(() => {});
+    if (what === 'routine-no') return act(() => api('save_routine', { id, status: 'ended' }), 'Routine declined.').catch(() => {});
     if (what === 'pick-a' || what === 'pick-b') {
       const c = openConflicts().find((x) => x.id === id);
       if (!c) return;
@@ -188,7 +201,9 @@ const Home = (() => {
       ${reply ? `<p class="h-quote">${esc(reply.body)}</p>` : ''}
       <textarea name="body" rows="5" required maxlength="4000" placeholder="Type, or tap the 🎤 on your keyboard and talk." autofocus></textarea>
       ${reply ? `<input type="hidden" name="to" value="${esc(reply.author)}">` : `<div class="h-chips" role="radiogroup" aria-label="To">${who.map(([v, l]) => `<label class="h-chip"><input type="radio" name="to" value="${esc(v)}"${v === to ? ' checked' : ''}><span>${esc(l)}</span></label>`).join('')}</div>
-      <label class="h-switch"><input type="checkbox" name="task"${task ? ' checked' : ''}><span>Make it a task</span><span class="muted small">the first line becomes its title</span></label>`}
+      <label class="h-switch"><input type="checkbox" name="task"${task ? ' checked' : ''}><span>Make it a task</span><span class="muted small">the first line becomes its title</span></label>
+      <label for="h-repeat" class="small muted">Repeat (tasks only)</label>
+      <select id="h-repeat" name="repeat">${options([['', 'Just once'], ...ROUTINE_EVERY], '')}</select>`}
       <label for="h-project" class="small muted">Project</label>
       <select id="h-project" name="project">${options([['', 'Board-wide'], ...projects.map((p) => [p.slug, p.name])], project)}</select>
       <div class="actions"><button class="btn primary h-send">Send</button></div>
@@ -201,6 +216,11 @@ const Home = (() => {
         const title = body.split('\n')[0].slice(0, 120);
         const p = { project: f.project, title, description: body, priority: 2, role_tag: 'any' };
         if (f.to) p.assignee = f.to;
+        if (f.repeat) {
+          const r = await act(() => api('save_routine', { ...p, every: f.repeat }), `Routine started: a fresh copy ${f.repeat === 'once a day' ? 'every day' : f.repeat}.`);
+          if (r && r.last_task) flash(`🔁 First copy: ${r.last_task.ref}`);
+          return;
+        }
         const r = await act(() => api('create_task', p), f.to ? `Task created for ${agentName(f.to)}.` : 'Task created. The Floor will pick who does it.');
         if (r && r.routed) flash(`🧭 ${r.ref} → ${agentName(r.routed.to)}`);
         return;
