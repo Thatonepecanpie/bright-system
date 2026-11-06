@@ -104,10 +104,18 @@ Add a new numbered file for any change; never edit an applied one in place.
 
 See [docs/TESTS.md](docs/TESTS.md) for the six acceptance tests and how each was verified.
 
-## Design reference library
+## Indigo, the designer
 
-`.claude/skills/design-taste/` is a Claude skill that collects the designs, sites and tools Fernando shares as
-examples of good taste. Each source gets a written study in `references/sources/` and a row in
-`references/index.md`, and the recurring lessons become the "house taste" in `SKILL.md`. Claude sessions on this
-repo load it whenever they design something visual, and file any new design link Fernando sends. No third-party
-images are committed; the notes describe each piece in words.
+`.claude/skills/designer/` is a Claude skill that gives every session the same designer: Indigo, with a fixed
+personality, a way of working and Fernando's design library.
+
+- `SKILL.md`: who Indigo is, how Indigo works from brief to hand-over, and the "house taste" distilled from the library.
+- `references/index.md` and `references/sources/`: a written study of every design link Fernando shares. No third-party
+  images are committed; the notes describe each piece in words.
+- `references/video-pipeline.md`: brief → storyboard → motion → sound → render → launch, with a verdict on each of
+  16 open-source video tools (Remotion, Anime.js, Flubber, Three.js, Pedalboard, FFmpeg and others).
+- `assets/video-starter/`: a Remotion project that renders headless in a cloud session (tested), plus `sound.py`
+  (Pedalboard), `deliver.sh` (FFmpeg: 16:9, 9:16, GIF, poster) and `record.cjs` (screen capture with Playwright).
+
+Sessions on this repo load the skill on their own. To have Indigo in every session and chat, save the packaged skill to
+your Claude profile.

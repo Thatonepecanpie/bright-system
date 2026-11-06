@@ -1,0 +1,19 @@
+{
+  "name": "video-starter",
+  "private": true,
+  "description": "Brief-to-video starter: Remotion + Flubber + Anime.js, rendered headless. Copy this folder, then npm install.",
+  "scripts": {
+    "render": "node render.mjs",
+    "studio": "remotion studio src/index.jsx"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.541",
+    "@remotion/cli": "4.0.541",
+    "@remotion/renderer": "4.0.541",
+    "animejs": "4.5.0",
+    "flubber": "0.4.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "4.0.541"
+  }
+}
