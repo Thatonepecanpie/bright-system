@@ -103,3 +103,11 @@ Add a new numbered file for any change; never edit an applied one in place.
 ## Success tests
 
 See [docs/TESTS.md](docs/TESTS.md) for the six acceptance tests and how each was verified.
+
+## Design reference library
+
+`.claude/skills/design-taste/` is a Claude skill that collects the designs, sites and tools Fernando shares as
+examples of good taste. Each source gets a written study in `references/sources/` and a row in
+`references/index.md`, and the recurring lessons become the "house taste" in `SKILL.md`. Claude sessions on this
+repo load it whenever they design something visual, and file any new design link Fernando sends. No third-party
+images are committed; the notes describe each piece in words.
