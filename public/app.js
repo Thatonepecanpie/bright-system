@@ -438,8 +438,15 @@ function viewBoard() {
 function viewFiles() {
   const folders = [['', 'All folders'], ['shared', 'Shared'], ...activeProjects().map((p) => [p.slug, p.name])];
   const files = state.snap.files.filter((f) => !state.folder || f.project === state.folder);
+  const albums = new Map(); // "project|folder" -> picture count, newest folder first
+  files.filter(isImageFile).forEach((f) => { const k = `${f.project}|${dirOf(f.path)}`; albums.set(k, (albums.get(k) || 0) + 1); });
+  const albumKeys = [...albums.keys()].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  const albumRow = albumKeys.length ? `<div class="panel"><h2>🖼 Pictures</h2><div class="album-row">${albumKeys.map((k) => {
+    const [p, dir] = k.split('|');
+    return `<button class="btn album" data-gallery="${esc(k)}"><strong>${esc(dir.split('/').pop() || p)}</strong><span class="small muted">${esc(p)}${dir.includes('/') ? ' · ' + esc(dir.slice(0, dir.lastIndexOf('/'))) : ''} · ${albums.get(k)} pic${albums.get(k) === 1 ? '' : 's'}</span></button>`;
+  }).join('')}</div></div>` : '';
   const rows = files.map((f) => `<tr>
-      <td><a href="#" data-file="${f.id}">${esc(f.path)}</a>${f.note ? `<div class="small muted">${esc(f.note)}</div>` : ''}</td>
+      <td>${isImageFile(f) ? '🖼 ' : ''}<a href="#" data-file="${f.id}">${esc(f.path)}</a>${f.note ? `<div class="small muted">${esc(f.note)}</div>` : ''}</td>
       <td><span class="pill">${esc(f.project)}</span></td>
       <td class="mono small">v${f.version}</td>
       <td class="mono small">${fmtBytes(f.size_bytes)}</td>
@@ -459,6 +466,7 @@ function viewFiles() {
       <input type="file" id="upload-input" class="hidden">
       <label class="inline"><input type="checkbox" id="show-trash"${state.showTrash ? ' checked' : ''}> Show trash</label>
     </div>
+    ${albumRow}
     <div class="panel"><div class="table-wrap"><table class="stack compact"><thead><tr><th>File</th><th>Folder</th><th>Version</th><th>Size</th><th>Last saved</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="5" class="muted">No files yet. Create one, upload one, or let the agents fill it.</td></tr>'}</tbody></table></div></div>
     ${trash}`;
@@ -898,7 +906,7 @@ async function pingAgent(id) {
       how = `Ping sent. To hear back now, send it the message from its own app; its reply will appear right here:
         <div class="actions"><a class="btn small primary" href="${esc(CHAT_LINKS[s.id](PING_MESSAGE))}" target="_blank" rel="noopener">Open ${esc(s.display_name)} with the message</a>
         <button class="btn small" type="button" data-copy-ping>Copy message</button></div>
-        <span class="muted">If its Company Floor connector lives in a desktop app, paste the message there instead.</span>`;
+        <span class="muted">${s.id === 'chatgpt' ? 'In the new chat, tap + → Developer mode and switch on Company Floor before sending (one-time setup: Settings → Apps → Advanced settings).' : 'If its Company Floor connector lives in a desktop app, paste the message there instead.'}</span>`;
     } else {
       how += ` <button class="btn small" type="button" data-copy-ping>Copy a message to send it yourself</button>`;
     }
@@ -970,10 +978,53 @@ function agentDialog(a = {}) {
 // ---------- files ----------
 
 const isTextFile = (f) => f.encoding === 'utf8';
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i;
+const isImageFile = (f) => /^image\/(png|jpeg|gif|webp)$/.test(f.mime || '') || IMAGE_EXT.test(f.path || '');
+const imageMime = (f) => (/^image\//.test(f.mime || '') ? f.mime : `image/${(f.path.match(IMAGE_EXT) || [, 'png'])[1].toLowerCase().replace('jpg', 'jpeg')}`);
+const dirOf = (path) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
+
+// Big files (a post image is ~1.5 MB as base64) come down in slices so each round trip stays small.
+const FILE_CHUNK = 350000;
+async function readWholeFile(id, version) {
+  const first = await api('file_read', { file_id: id, version: version || '', chunk_length: FILE_CHUNK, chunk_offset: 0 });
+  if (first.content_length == null) return first; // older server: the whole file came back
+  const parts = [first.content || ''];
+  for (let off = parts[0].length; off < first.content_length; ) {
+    const next = await api('file_read', { file_id: id, version: version || '', chunk_length: FILE_CHUNK, chunk_offset: off });
+    if (!next.content) break;
+    parts.push(next.content);
+    off += next.content.length;
+  }
+  return { ...first, content: parts.join('') };
+}
+const imageSrc = (f) => `data:${imageMime(f)};base64,${f.content}`;
+
+// All pictures in one folder (for example a social batch), with the folder's notes underneath.
+async function galleryDialog(project, dir) {
+  const inDir = state.snap.files.filter((f) => f.project === project && dirOf(f.path) === dir);
+  const pics = inDir.filter(isImageFile).sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
+  const notes = inDir.filter((f) => /\.(md|txt)$/i.test(f.path));
+  openDialog(`🖼 ${project}/${dir || '(top)'}`, `<p class="small muted">${pics.length} picture${pics.length === 1 ? '' : 's'}. Tap one for its versions, download or replace.</p>
+    <div class="gallery">${pics.map((f) => `<figure class="gallery-item" data-file="${f.id}" tabindex="0">
+      <div class="gallery-img" id="gal-${f.id}"><span class="muted small">Loading…</span></div>
+      <figcaption class="small">${esc(f.path.slice(dir ? dir.length + 1 : 0))}</figcaption></figure>`).join('')}</div>
+    ${notes.map((f) => `<details class="gallery-notes"><summary>📝 ${esc(f.path.slice(dir ? dir.length + 1 : 0))}</summary><pre id="gal-note-${f.id}" class="small">Loading…</pre></details>`).join('')}`);
+  for (const f of notes) {
+    readWholeFile(f.id).then((r) => { const el = $(`#gal-note-${f.id}`); if (el) el.textContent = r.content; }).catch(() => {});
+  }
+  for (const f of pics) { // one at a time keeps the connector happy
+    const box = $(`#gal-${f.id}`);
+    if (!box) return; // dialog closed
+    try {
+      const r = await readWholeFile(f.id);
+      box.innerHTML = `<img alt="${esc(f.path)}" src="${imageSrc(r)}">`;
+    } catch (e) { box.innerHTML = `<span class="error small">${esc(e.message)}</span>`; }
+  }
+}
 
 async function openFile(id, version) {
   try {
-    const f = await api('file_read', { file_id: id, version: version || '' });
+    const f = await readWholeFile(id, version);
     const title = `${f.project}/${f.path}`;
     const meta = `<p class="small muted">Version ${f.version}${f.is_latest ? ' (latest)' : ' (older version)'} · ${fmtBytes(f.size_bytes)} · ${esc(f.mime)} · saved by ${esc(agentName(f.updated_by))} ${ago(f.updated_at)}${f.note ? ' · ' + esc(f.note) : ''}</p>`;
     const tools = `<button class="btn" type="button" data-file-download>Download</button>
@@ -987,6 +1038,10 @@ async function openFile(id, version) {
       async (form) => {
         await act(() => api('file_write', { project: f.project, path: f.path, content: form.content, encoding: 'utf8', mime: f.mime, note: form.note || '' }), 'Saved as a new version.');
       });
+    } else if (isImageFile(f)) {
+      openDialog(title, `${meta}<div class="file-preview"><img alt="${esc(f.path)}" src="${imageSrc(f)}"></div>
+        <div class="actions">${tools}<button class="btn" type="button" id="replace-file">Replace</button></div>`);
+      $('#replace-file')?.addEventListener('click', () => pickUpload({ project: f.project, path: f.path }));
     } else {
       openDialog(title, `${meta}<p>This is a binary file. Download it to open it, or upload a replacement with the same name.</p>
         <div class="actions">${tools}<button class="btn" type="button" id="replace-file">Replace</button></div>`);
@@ -1217,7 +1272,7 @@ async function checkVersion() {
 
 document.addEventListener('click', async (ev) => {
   if (Home.click(ev)) return;
-  const el = ev.target.closest('a[data-task], .card[data-task], [data-goto], [data-ping], [data-wake], [data-give], [data-edit-project], [data-new-assignment], [data-edit-assignment], [data-toggle-agent], [data-edit-agent], [data-correct-memory], [data-file], [data-file-history], [data-file-version], [data-file-restore], [data-file-delete], [data-undelete], [data-vault-edit], [data-vault-reveal], [data-vault-revoke], [data-copy-ping], [data-conflict], [data-achievement], [data-show-quiet], [data-sprite], [data-sched-approve], [data-sched-change], [data-sched-decline], [data-new-routine], [data-edit-routine], [data-routine-status], #run-manager, #save-manager, #brief-floor, #update-now, #new-task, #new-project, #new-agent, #new-memory, #new-message, #new-file, #upload-file, #new-cred, #run-sweep, #save-hours, #rotate-owner, #sign-out');
+  const el = ev.target.closest('[data-task], [data-gallery], [data-goto], [data-ping], [data-wake], [data-give], [data-edit-project], [data-new-assignment], [data-edit-assignment], [data-toggle-agent], [data-edit-agent], [data-correct-memory], [data-file], [data-file-history], [data-file-version], [data-file-restore], [data-file-delete], [data-undelete], [data-vault-edit], [data-vault-reveal], [data-vault-revoke], [data-copy-ping], [data-conflict], [data-achievement], [data-show-quiet], [data-sprite], [data-sched-approve], [data-sched-change], [data-sched-decline], [data-new-routine], [data-edit-routine], [data-routine-status], #run-manager, #save-manager, #brief-floor, #update-now, #new-task, #new-project, #new-agent, #new-memory, #new-message, #new-file, #upload-file, #new-cred, #run-sweep, #save-hours, #rotate-owner, #sign-out');
   if (!el) return;
   const d = el.dataset;
   if (el.tagName === 'A') ev.preventDefault();
@@ -1230,6 +1285,7 @@ document.addEventListener('click', async (ev) => {
   if (d.ping) return pingAgent(d.ping);
   if (d.wake) return wakeAgent(d.wake);
   if (d.give) return newTask({ assignee: d.give, role_tag: 'any' });
+  if (d.gallery) { const [p, dir] = d.gallery.split('|'); return galleryDialog(p, dir); }
   if (d.file) return openFile(Number(d.file));
   if (d.fileHistory) return fileHistory(Number(d.fileHistory));
   if (d.fileVersion) { const [id, v] = d.fileVersion.split('|'); return openFile(Number(id), Number(v)); }
@@ -1315,6 +1371,7 @@ document.addEventListener('click', async (ev) => {
 
 document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter' && ev.target.matches('.card[data-task]')) openTask(Number(ev.target.dataset.task));
+  if (ev.key === 'Enter' && ev.target.matches('.gallery-item[data-file]')) openFile(Number(ev.target.dataset.file));
 });
 document.addEventListener('submit', (ev) => {
   if (ev.target.id === 'rules-form') {
